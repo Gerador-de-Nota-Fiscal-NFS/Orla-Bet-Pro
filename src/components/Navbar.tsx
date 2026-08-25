@@ -179,13 +179,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
                 )}
 
-                <div className="flex items-center gap-1.5 bg-cyan-50 border border-cyan-200 px-3 py-1.5 rounded-2xl">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-xs font-bold text-cyan-800 max-w-[100px] md:max-w-[140px] truncate">
+                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border ${
+                  currentUser.status === 'teste'
+                    ? 'bg-amber-50 border-amber-300 text-amber-900'
+                    : 'bg-cyan-50 border-cyan-200 text-cyan-800'
+                }`}>
+                  <div className={`w-2 h-2 rounded-full ${
+                    currentUser.status === 'teste' ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'
+                  }`} />
+                  <span className="text-xs font-bold max-w-[100px] md:max-w-[140px] truncate">
                     {currentUser.name}
                   </span>
-                  <span className="hidden xl:inline text-[9px] bg-cyan-200 text-cyan-900 font-black px-1.5 py-0.5 rounded-md uppercase">
-                    {currentUser.plan.replace('Plano ', '')}
+                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase ${
+                    currentUser.status === 'teste' 
+                      ? 'bg-amber-200 text-amber-950 font-black' 
+                      : 'bg-cyan-200 text-cyan-900'
+                  }`}>
+                    {currentUser.status === 'teste' ? 'Teste Grátis' : currentUser.plan.replace('Plano ', '')}
                   </span>
                 </div>
 

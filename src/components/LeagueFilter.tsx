@@ -33,13 +33,26 @@ export const LeagueFilter: React.FC<LeagueFilterProps> = ({
 
   const leaguesList = [
     { id: 'all', name: 'Todas as Ligas', flag: '🌍' },
-    { id: '71', name: 'Série A', flag: '🇧🇷' },
-    { id: '72', name: 'Série B', flag: '🇧🇷' },
+    { id: '73', name: 'Copa do Brasil', flag: '🇧🇷' },
+    { id: '128', name: 'Camp. Argentino', flag: '🇦🇷' },
+    { id: '71', name: 'Brasileirão Série A', flag: '🇧🇷' },
+    { id: '72', name: 'Brasileirão Série B', flag: '🇧🇷' },
+    { id: '13', name: 'Libertadores', flag: '🌎' },
+    { id: '11', name: 'Sul-Americana', flag: '🌎' },
     { id: '2', name: 'Champions League', flag: '🏆' },
+    { id: '3', name: 'Europa League', flag: '🏆' },
     { id: '39', name: 'Premier League', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
     { id: '140', name: 'La Liga', flag: '🇪🇸' },
-    { id: '13', name: 'Libertadores', flag: '🌎' },
-    { id: '253', name: 'MLS', flag: '🇺🇸' }
+    { id: '135', name: 'Serie A TIM', flag: '🇮🇹' },
+    { id: '78', name: 'Bundesliga', flag: '🇩🇪' },
+    { id: '61', name: 'Ligue 1', flag: '🇫🇷' },
+    { id: '475', name: 'Paulistão', flag: '🇧🇷' },
+    { id: '476', name: 'Camp. Carioca', flag: '🇧🇷' },
+    { id: '477', name: 'Camp. Gaúcho', flag: '🇧🇷' },
+    { id: '478', name: 'Camp. Mineiro', flag: '🇧🇷' },
+    { id: '480', name: 'Copa do Nordeste', flag: '🇧🇷' },
+    { id: '253', name: 'MLS', flag: '🇺🇸' },
+    { id: '307', name: 'Saudi Pro League', flag: '🇸🇦' }
   ];
 
   return (

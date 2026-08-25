@@ -340,6 +340,55 @@ export const MASCOT_MAP: Record<string, MascotData> = {
     primaryColor: '#dc2626',
     secondaryColor: '#ffffff'
   },
+  'racing': { 
+    emoji: '🎓', 
+    nickname: 'La Academia',
+    bg: 'linear-gradient(135deg, #38bdf8 0%, #ffffff 100%)',
+    primaryColor: '#38bdf8',
+    secondaryColor: '#ffffff'
+  },
+  'independiente': { 
+    emoji: '😈', 
+    nickname: 'Diablo Rojo / Rey de Copas',
+    bg: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
+    primaryColor: '#dc2626',
+    secondaryColor: '#ffffff'
+  },
+  'san lorenzo': { 
+    emoji: '🦅', 
+    nickname: 'Cuervo / Ciclón',
+    bg: 'linear-gradient(135deg, #1d4ed8 0%, #dc2626 100%)',
+    primaryColor: '#1d4ed8',
+    secondaryColor: '#dc2626'
+  },
+  'velez': { 
+    emoji: '🏰', 
+    nickname: 'El Fortín',
+    bg: 'linear-gradient(135deg, #2563eb 0%, #ffffff 100%)',
+    primaryColor: '#2563eb',
+    secondaryColor: '#ffffff'
+  },
+  'lanus': { 
+    emoji: '🍇', 
+    nickname: 'Granate',
+    bg: 'linear-gradient(135deg, #881337 0%, #4c0519 100%)',
+    primaryColor: '#881337',
+    secondaryColor: '#ffffff'
+  },
+  'al nassr': { 
+    emoji: '⚔️', 
+    nickname: 'Cavaleiros de Najd',
+    bg: 'linear-gradient(135deg, #eab308 0%, #1e3a8a 100%)',
+    primaryColor: '#eab308',
+    secondaryColor: '#1e3a8a'
+  },
+  'al hilal': { 
+    emoji: '🌊', 
+    nickname: 'Onda Azul Real',
+    bg: 'linear-gradient(135deg, #1d4ed8 0%, #ffffff 100%)',
+    primaryColor: '#1d4ed8',
+    secondaryColor: '#ffffff'
+  },
   'inter miami': { 
     emoji: '🦩', 
     nickname: 'Herons / Garças Rosa',

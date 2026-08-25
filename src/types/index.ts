@@ -99,17 +99,22 @@ export interface H2HMatch {
   goals: GoalsInfo;
 }
 
+export type UserStatus = 'ativo' | 'bloqueado' | 'teste' | 'teste_expirado';
+
 export interface Subscriber {
   uid: string;
   name: string;
   email: string;
   role: 'user' | 'admin';
-  status: 'ativo' | 'bloqueado';
+  status: UserStatus;
   plan: string;
   monthlyValue: number;
   phone?: string;
   createdAt: string;
   lastLogin?: string;
+  trialStartedAt?: string;
+  trialEndsAt?: string; // ISO date timestamp
+  isTrial?: boolean;
 }
 
 export interface BetSelection {

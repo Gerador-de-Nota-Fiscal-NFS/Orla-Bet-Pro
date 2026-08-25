@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Lock, Mail, User, Phone, CheckCircle, Sparkles, AlertCircle, MessageSquare, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, User, Phone, CheckCircle, Sparkles, AlertCircle, MessageSquare, ShieldCheck, Timer } from 'lucide-react';
 import { Subscriber } from '../types';
-import { loginSubscriber, registerSubscriber, loginWithGoogle, getWhatsAppPaymentLink } from '../services/firebase';
+import { loginSubscriber, registerSubscriber, loginWithGoogle, getWhatsAppPaymentLink, SUBSCRIPTION_PLANS } from '../services/firebase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -23,11 +23,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [plan, setPlan] = useState('Plano Mensal VIP');
+  const [plan, setPlan] = useState('Plano Avançado (Pro)');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
+
+  const currentPlanObj = SUBSCRIPTION_PLANS.find(p => p.name === plan) || SUBSCRIPTION_PLANS[1];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +45,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       } else {
         const user = await registerSubscriber(email, password, name, plan, phone);
         onSuccess(user);
-        onShowToast(`Conta VIP criada com sucesso! Bem-vindo, ${user.name}!`, 'success');
+        onShowToast(`Conta criada com sucesso! Você tem 15 minutos de teste gratuito liberados!`, 'success');
         onClose();
       }
     } catch (err: any) {
@@ -68,26 +70,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const handleQuickDemo = async (type: 'admin' | 'user') => {
-    setLoading(true);
-    try {
-      if (type === 'admin') {
-        const user = await loginSubscriber('admin@orlabet.com', '123456');
-        onSuccess(user);
-        onShowToast('Conectado como Administrador Master!', 'success');
-      } else {
-        const user = await loginSubscriber('rodrigo.trader@gmail.com', '123456');
-        onSuccess(user);
-        onShowToast('Conectado como Assinante VIP!', 'success');
-      }
-      onClose();
-    } catch (err: any) {
-      setErrorMsg(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
       <div 
@@ -105,13 +87,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
 
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xl">🦁</span>
+            <span className="text-xl">⚽</span>
             <h3 className="text-xl font-black uppercase tracking-tight">
-              Orla Bet <span className="text-cyan-300">VIP</span>
+              Orla Bet <span className="text-cyan-300">PRO</span>
             </h3>
           </div>
           <p className="text-xs text-cyan-100 font-medium">
-            Acesso ilimitado às análises de IA, mascotes e bilhetes prontos
+            Palpites diários com IA, bilhetes prontos e suporte a todas as ligas
           </p>
 
           {/* Switch Tab */}
@@ -130,18 +112,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 tab === 'register' ? 'bg-white text-blue-700 shadow-md' : 'text-white/80 hover:text-white'
               }`}
             >
-              Criar Conta VIP
+              Criar Conta / Teste
             </button>
           </div>
         </div>
 
         {/* Body */}
-        <div className="p-6">
+        <div className="p-6 max-h-[80vh] overflow-y-auto">
           
           {errorMsg && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2 text-xs text-red-700">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
               <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Trial Notice when in Register tab */}
+          {tab === 'register' && (
+            <div className="mb-4 p-3 bg-cyan-50 border border-cyan-200 rounded-2xl flex items-start gap-2.5 text-xs text-cyan-900">
+              <Timer className="w-4 h-4 shrink-0 text-cyan-600 mt-0.5" />
+              <div>
+                <span className="font-bold block text-cyan-950">🎉 15 Minutos de Teste Gratuito!</span>
+                <span className="text-[11px] text-cyan-800 leading-tight">
+                  Ao criar sua conta, você ganha acesso experimental imediato com cronômetro para testar todos os palpites e análises.
+                </span>
+              </div>
             </div>
           )}
 
@@ -170,7 +165,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
               />
             </svg>
-            <span>{tab === 'login' ? 'Entrar direto com o Google' : 'Criar conta VIP com o Google'}</span>
+            <span>{tab === 'login' ? 'Entrar direto com o Google' : 'Criar conta com o Google'}</span>
           </button>
 
           {/* Divider */}
@@ -193,7 +188,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Ex: João Trader"
+                    placeholder="Ex: Carlos Eduardo"
                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-9 pr-3 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-cyan-500 shadow-inner"
                   />
                   <User className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-400" />
@@ -239,7 +234,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <>
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
-                    WhatsApp (Opcional)
+                    WhatsApp (Para liberação do PIX)
                   </label>
                   <div className="relative">
                     <input
@@ -256,7 +251,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[10px] font-black uppercase text-slate-400">
-                      Escolha seu Plano VIP
+                      Plano Desejado
                     </label>
                     {onOpenPlans && (
                       <button
@@ -264,7 +259,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         onClick={onOpenPlans}
                         className="text-[10px] font-bold text-cyan-600 hover:text-cyan-700 underline"
                       >
-                        Ver Vantagens dos Planos
+                        Comparar Planos
                       </button>
                     )}
                   </div>
@@ -273,9 +268,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     onChange={(e) => setPlan(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-2.5 text-xs text-slate-800 focus:outline-none focus:border-cyan-500 font-bold"
                   >
-                    <option value="Plano Anual VIP">Plano Anual Master VIP — R$ 349,90/ano (42% OFF)</option>
-                    <option value="Plano Trimestral Pro">Plano Trimestral Pro — R$ 119,90</option>
-                    <option value="Plano Mensal VIP">Plano Mensal VIP — R$ 49,90/mês</option>
+                    <option value="Plano Básico">Plano Básico — R$ 10,00/mês (1 Palpite)</option>
+                    <option value="Plano Avançado (Pro)">Plano Avançado (Pro) — R$ 20,00/mês (4 Palpites + 1 Bilhete)</option>
+                    <option value="Plano VIP">Plano VIP — R$ 49,00/mês (10 Palpites, IA Ilimitada + Bilhetes)</option>
                   </select>
                 </div>
 
@@ -284,23 +279,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <span className="text-[11px] font-bold text-emerald-800 flex items-center gap-1">
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      Pagamento Seguro via PIX
-                    </span>
-                    <span className="text-[10px] font-black text-emerald-600">
-                      {plan.includes('Anual') ? 'R$ 349,90' : plan.includes('Trimestral') ? 'R$ 119,90' : 'R$ 49,90'}
+                      Pagamento via PIX ({currentPlanObj.formattedPrice})
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-600 leading-snug mb-2">
-                    Faça o PIX direto com o administrador pelo WhatsApp e envie o comprovante para liberação imediata.
+                    Faça o PIX para o administrador e ative sua conta definitiva sem interrupções.
                   </p>
                   <a
-                    href={getWhatsAppPaymentLink(plan, plan.includes('Anual') ? 'R$ 349,90' : plan.includes('Trimestral') ? 'R$ 119,90' : 'R$ 49,90', name)}
+                    href={getWhatsAppPaymentLink(currentPlanObj.name, currentPlanObj.formattedPrice, name)}
                     target="_blank"
                     rel="noreferrer"
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-3 rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition text-center shadow-sm"
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Pagar no WhatsApp & Chamar Admin</span>
+                    <span>Abrir WhatsApp para Pagar PIX</span>
                   </a>
                 </div>
               </>
@@ -311,16 +303,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               disabled={loading}
               className="w-full bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black py-3.5 rounded-2xl text-xs uppercase tracking-wider transition shadow-lg shadow-cyan-500/25 disabled:opacity-50 mt-2"
             >
-              {loading ? 'Processando...' : tab === 'login' ? 'Entrar no Sistema' : 'Concluir Cadastro VIP'}
+              {loading ? 'Processando...' : tab === 'login' ? 'Entrar no Sistema' : 'Criar Conta & Iniciar Teste Grátis'}
             </button>
 
           </form>
 
-          {/* Clean customer-facing footer */}
+          {/* Footer */}
           <div className="mt-4 pt-4 border-t border-slate-100">
             <div className="flex items-center justify-between text-[11px] text-slate-400">
-              <span>🔒 Ambiente Seguro com Criptografia</span>
-              <span className="font-semibold text-emerald-600">Ativação Imediata</span>
+              <span>🔒 Criptografia de ponta a ponta</span>
+              <span className="font-semibold text-emerald-600">Liberação Imediata</span>
             </div>
           </div>
 

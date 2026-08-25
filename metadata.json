@@ -1,0 +1,6 @@
+{
+  "name": "Orla Bet — Pro Analytics & IA Geral",
+  "description": "Plataforma profissional de palpites esportivos, inteligência artificial preditiva, mascotes inteligentes e gestão de assinantes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -24,6 +24,9 @@ import {
   AdminDashboard 
 } from './components/AdminDashboard';
 import { 
+  WelcomeAuthScreen 
+} from './components/WelcomeAuthScreen';
+import { 
   AuthModal 
 } from './components/AuthModal';
 import { 
@@ -252,6 +255,42 @@ export function App() {
 
   // Check if current user is blocked or trial expired
   const isUserBlockedOrExpired = currentUser && (currentUser.status === 'teste_expirado' || currentUser.status === 'bloqueado');
+
+  // If no user is logged in and not in admin mode, render exclusively the Welcome & Auth Gateway
+  if (!currentUser && currentView !== 'admin') {
+    return (
+      <>
+        <WelcomeAuthScreen
+          onSuccess={(user) => {
+            setCurrentUser(user);
+            if (user.status === 'teste') {
+              setTrialTimeLeft(getRemainingTrialSeconds(user));
+            }
+            loadGames(selectedDate);
+            showToast(`Bem-vindo à plataforma, ${user.name}!`, 'success');
+          }}
+          onShowToast={showToast}
+          onOpenSecretAdmin={() => setIsSecretAdminOpen(true)}
+        />
+
+        <AdminSecretLoginModal
+          isOpen={isSecretAdminOpen}
+          onClose={() => setIsSecretAdminOpen(false)}
+          onSuccess={(admin) => {
+            setCurrentUser(admin);
+            setCurrentView('admin');
+            showToast(`Painel Master Admin liberado com sucesso!`, 'success');
+          }}
+          onShowToast={showToast}
+        />
+
+        <ToastContainer
+          toasts={toasts}
+          onDismiss={dismissToast}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-cyan-50/20 to-slate-100 text-slate-900 flex flex-col selection:bg-cyan-500 selection:text-white">

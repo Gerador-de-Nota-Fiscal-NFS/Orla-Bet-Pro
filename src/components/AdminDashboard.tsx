@@ -18,21 +18,28 @@ import {
   Sparkles,
   Zap,
   Check,
-  PlusCircle
+  PlusCircle,
+  MessageCircle,
+  AlertTriangle,
+  Ban
 } from 'lucide-react';
 import { Subscriber, UserStatus } from '../types';
 import { 
   fetchAllSubscribers, 
+  subscribeToSubscribers,
   updateSubscriberStatus, 
   updateSubscriberPlan, 
   removeSubscriber, 
   registerSubscriber,
   approveSubscriberAccess,
+  activateSubscriberPayment,
+  blockSubscriberNoPayment,
   extendSubscriberTrial,
   SUBSCRIPTION_PLANS,
   getRemainingTrialSeconds,
   ADMIN_WHATSAPP_DISPLAY,
-  ADMIN_WHATSAPP_NUMBER
+  ADMIN_WHATSAPP_NUMBER,
+  getClientWhatsAppDirectLink
 } from '../services/firebase';
 
 interface AdminDashboardProps {
@@ -52,6 +59,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newPlan, setNewPlan] = useState('Plano Avançado (Pro)');
+  const [newStatus, setNewStatus] = useState<UserStatus>('teste');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadData = async () => {
@@ -66,8 +74,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
     }
   };
 
+  // Real-time Firestore synchronization
   useEffect(() => {
-    loadData();
+    setLoading(true);
+    const unsubscribe = subscribeToSubscribers((data) => {
+      setSubscribers(data);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const totalUsers = subscribers.length;
@@ -82,21 +99,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
 
   const avgTicket = activeUsers > 0 ? (totalRevenue / activeUsers) : 0;
 
-  const handleToggleStatus = async (uid: string, currentStatus: UserStatus) => {
-    const nextStatus: UserStatus = currentStatus === 'ativo' ? 'bloqueado' : 'ativo';
-    try {
-      await updateSubscriberStatus(uid, nextStatus);
-      setSubscribers(prev => prev.map(s => s.uid === uid ? { ...s, status: nextStatus } : s));
-      onShowToast(`Status do usuário atualizado para ${nextStatus.toUpperCase()}!`, 'success');
-    } catch (e: any) {
-      onShowToast('Falha ao atualizar status: ' + e.message, 'error');
-    }
-  };
-
-  const handleApproveAccess = async (sub: Subscriber) => {
+  // Dedicated Activate Account
+  const handleActivateAccount = async (sub: Subscriber) => {
     const planObj = SUBSCRIPTION_PLANS.find(p => p.name === sub.plan) || SUBSCRIPTION_PLANS[1];
     try {
-      await approveSubscriberAccess(sub.uid, planObj.name, planObj.price);
+      await activateSubscriberPayment(sub.uid, planObj.name, planObj.price);
       setSubscribers(prev => prev.map(s => s.uid === sub.uid ? { 
         ...s, 
         status: 'ativo', 
@@ -105,9 +112,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
         isTrial: false,
         trialEndsAt: undefined
       } : s));
-      onShowToast(`Acesso do assinante "${sub.name}" APROVADO com sucesso no ${planObj.name}!`, 'success');
+      onShowToast(`Conta de "${sub.name}" ATIVADA com sucesso (PIX Confirmado)!`, 'success');
     } catch (e: any) {
-      onShowToast('Erro ao aprovar acesso: ' + e.message, 'error');
+      onShowToast('Erro ao ativar conta: ' + e.message, 'error');
+    }
+  };
+
+  // Dedicated Block Account (e.g. No Payment)
+  const handleBlockAccount = async (sub: Subscriber) => {
+    try {
+      await blockSubscriberNoPayment(sub.uid);
+      setSubscribers(prev => prev.map(s => s.uid === sub.uid ? { 
+        ...s, 
+        status: 'bloqueado',
+        isTrial: false 
+      } : s));
+      onShowToast(`Conta de "${sub.name}" BLOQUEADA por falta de pagamento.`, 'error');
+    } catch (e: any) {
+      onShowToast('Falha ao bloquear conta: ' + e.message, 'error');
+    }
+  };
+
+  const handleToggleStatus = async (uid: string, currentStatus: UserStatus) => {
+    const nextStatus: UserStatus = currentStatus === 'ativo' ? 'bloqueado' : 'ativo';
+    try {
+      await updateSubscriberStatus(uid, nextStatus);
+      setSubscribers(prev => prev.map(s => s.uid === uid ? { ...s, status: nextStatus } : s));
+      onShowToast(`Status do usuário alterado para ${nextStatus.toUpperCase()}!`, 'info');
+    } catch (e: any) {
+      onShowToast('Falha ao atualizar status: ' + e.message, 'error');
     }
   };
 
@@ -135,11 +168,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
   };
 
   const handleDeleteSubscriber = async (uid: string, name: string) => {
-    if (window.confirm(`Tem certeza que deseja remover o assinante "${name}"?`)) {
+    if (window.confirm(`Tem certeza que deseja remover o assinante "${name}" do banco de dados?`)) {
       try {
         await removeSubscriber(uid);
         setSubscribers(prev => prev.filter(s => s.uid !== uid));
-        onShowToast('Assinante removido com sucesso.', 'info');
+        onShowToast('Assinante removido do banco com sucesso.', 'info');
       } catch (e: any) {
         onShowToast('Erro ao remover assinante: ' + e.message, 'error');
       }
@@ -156,12 +189,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
     setIsSubmitting(true);
     try {
       const added = await registerSubscriber(newEmail, '123456', newName, newPlan, newPhone);
+      if (newStatus === 'ativo') {
+        const planObj = SUBSCRIPTION_PLANS.find(p => p.name === newPlan) || SUBSCRIPTION_PLANS[1];
+        await activateSubscriberPayment(added.uid, planObj.name, planObj.price);
+        added.status = 'ativo';
+        added.isTrial = false;
+      } else if (newStatus === 'bloqueado') {
+        await blockSubscriberNoPayment(added.uid);
+        added.status = 'bloqueado';
+      }
+
       setSubscribers(prev => [added, ...prev.filter(s => s.uid !== added.uid)]);
-      onShowToast(`Assinante "${newName}" cadastrado com sucesso!`, 'success');
+      onShowToast(`Assinante "${newName}" computado no banco com sucesso!`, 'success');
       setShowAddModal(false);
       setNewName('');
       setNewEmail('');
       setNewPhone('');
+      setNewStatus('teste');
     } catch (err: any) {
       onShowToast('Erro ao adicionar assinante: ' + err.message, 'error');
     } finally {
@@ -205,10 +249,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
             <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1">
               📱 WhatsApp de Recebimento PIX: <strong>{ADMIN_WHATSAPP_DISPLAY}</strong>
             </span>
+            <span className="text-[9px] font-bold text-cyan-700 bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+              ⚡ Sincronização em Tempo Real (Firestore)
+            </span>
           </div>
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight mt-1 flex items-center gap-2">
             <Shield className="w-6 h-6 text-red-600" />
-            <span>Gestão de Assinantes & Aprovação PIX</span>
+            <span>Gestão de Assinantes & Controle de Acesso</span>
           </h2>
         </div>
 
@@ -238,7 +285,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
             <Users className="w-4 h-4 text-slate-400" />
           </div>
           <p className="text-2xl font-black text-slate-900 mt-2">{totalUsers}</p>
-          <span className="text-[9px] text-slate-400 mt-0.5">Base cadastrada</span>
+          <span className="text-[9px] text-slate-400 mt-0.5">Computados no banco</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-emerald-100 border-l-4 border-l-emerald-500 shadow-sm flex flex-col justify-between">
@@ -252,7 +299,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
               {totalUsers > 0 ? `${Math.round((activeUsers / totalUsers) * 100)}%` : '0%'}
             </span>
           </div>
-          <span className="text-[9px] text-slate-400 mt-0.5">Acesso 100% liberado</span>
+          <span className="text-[9px] text-slate-400 mt-0.5">PIX Pago / Liberado</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-cyan-100 border-l-4 border-l-cyan-500 shadow-sm flex flex-col justify-between">
@@ -261,7 +308,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
             <Timer className="w-4 h-4 text-cyan-500" />
           </div>
           <p className="text-2xl font-black text-cyan-600 mt-2">{trialUsers}</p>
-          <span className="text-[9px] text-slate-400 mt-0.5">Cronômetro ativo</span>
+          <span className="text-[9px] text-slate-400 mt-0.5">Novos testes (15 min)</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-amber-100 border-l-4 border-l-amber-500 shadow-sm flex flex-col justify-between">
@@ -273,17 +320,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
           <span className="text-[9px] text-slate-400 mt-0.5">Aguardando PIX</span>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-emerald-100 border-l-4 border-l-emerald-600 shadow-sm flex flex-col justify-between">
+        <div className="bg-white p-4 rounded-2xl border border-red-100 border-l-4 border-l-red-500 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Receita Mensal</span>
-            <DollarSign className="w-4 h-4 text-emerald-600" />
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Bloqueados</span>
+            <Ban className="w-4 h-4 text-red-500" />
           </div>
-          <p className="text-xl md:text-2xl font-black text-emerald-700 mt-2">
-            R$ {totalRevenue.toFixed(2).replace('.', ',')}
-          </p>
-          <span className="text-[9px] text-slate-400 mt-0.5">
-            Ticket Médio: R$ {avgTicket.toFixed(2).replace('.', ',')}
-          </span>
+          <p className="text-2xl font-black text-red-600 mt-2">{blockedUsers}</p>
+          <span className="text-[9px] text-slate-400 mt-0.5">Sem pagamento</span>
         </div>
 
       </div>
@@ -353,7 +396,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
             onClick={loadData}
             disabled={loading}
             className="bg-slate-100 hover:bg-slate-200 text-cyan-700 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
-            title="Sincronizar dados"
+            title="Sincronizar dados do banco"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Sincronizar</span>
@@ -380,16 +423,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
                 <th className="p-4 font-black">Usuário</th>
                 <th className="p-4 font-black">E-mail / Telefone</th>
                 <th className="p-4 font-black">Plano / Valor</th>
-                <th className="p-4 font-black">Status / Teste</th>
+                <th className="p-4 font-black">Status do Acesso</th>
                 <th className="p-4 font-black">Data Criação</th>
-                <th className="p-4 font-black text-right">Ações Rápidas</th>
+                <th className="p-4 font-black text-right">Controles de Acesso</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-cyan-600 font-bold animate-pulse">
-                    Carregando base de usuários...
+                    Carregando base de usuários do banco de dados...
                   </td>
                 </tr>
               ) : filteredSubscribers.length === 0 ? (
@@ -414,6 +457,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
                               ? 'bg-red-100 text-red-800' 
                               : sub.status === 'ativo' 
                               ? 'bg-emerald-100 text-emerald-800' 
+                              : sub.status === 'bloqueado'
+                              ? 'bg-red-100 text-red-800'
                               : 'bg-cyan-100 text-cyan-800'
                           }`}>
                             {sub.name.charAt(0).toUpperCase()}
@@ -432,8 +477,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
                       {/* Email / Telefone */}
                       <td className="p-4 text-slate-600">
                         <span className="block font-medium">{sub.email}</span>
-                        {sub.phone && (
-                          <span className="text-[10px] text-slate-400 block">{sub.phone}</span>
+                        {sub.phone ? (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-[10px] text-slate-500">{sub.phone}</span>
+                            <a
+                              href={getClientWhatsAppDirectLink(sub.phone, sub.name, sub.plan, sub.monthlyValue || 20, sub.status === 'ativo' ? 'liberado' : 'cobrar')}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-emerald-600 hover:text-emerald-700 text-[10px] font-bold flex items-center gap-0.5 ml-1 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200"
+                              title="Conversar com o cliente no WhatsApp"
+                            >
+                              <MessageCircle className="w-2.5 h-2.5" />
+                              <span>WhatsApp</span>
+                            </a>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 block">Sem telefone informado</span>
                         )}
                       </td>
 
@@ -455,7 +514,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
                         {sub.status === 'ativo' ? (
                           <span className="inline-flex items-center gap-1 border px-2.5 py-1 rounded-full text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 border-emerald-200">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            <span>Ativo</span>
+                            <span>Ativo (Pago)</span>
                           </span>
                         ) : sub.status === 'teste' ? (
                           <div className="inline-flex flex-col">
@@ -475,7 +534,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
                         ) : (
                           <span className="inline-flex items-center gap-1 border px-2.5 py-1 rounded-full text-[10px] font-black uppercase text-red-700 bg-red-50 border-red-200">
                             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                            <span>Bloqueado</span>
+                            <span>Bloqueado (Sem Pgto)</span>
                           </span>
                         )}
                       </td>
@@ -485,62 +544,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
                         {new Date(sub.createdAt).toLocaleDateString('pt-BR')}
                       </td>
 
-                      {/* Ações */}
+                      {/* Ações / Botões de Ativar e Bloquear */}
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           
-                          {/* Botão de Liberação de PIX / Aprovação */}
+                          {/* Botão de ATIVAR CONTA (Liberar PIX) */}
                           {sub.status !== 'ativo' && (
                             <button
-                              onClick={() => handleApproveAccess(sub)}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase shadow-sm transition flex items-center gap-1"
-                              title="Aprovar PIX e Liberar Acesso Imediato"
+                              onClick={() => handleActivateAccount(sub)}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase shadow-sm transition flex items-center gap-1"
+                              title="Confirmar pagamento e Ativar Acesso Imediato"
                             >
                               <Check className="w-3 h-3" />
-                              <span>Liberar PIX</span>
+                              <span>Ativar Conta</span>
                             </button>
                           )}
 
-                          {/* Estender +15 min de teste */}
+                          {/* Botão de BLOQUEAR CONTA (Sem Pagamento) */}
+                          {sub.status !== 'bloqueado' && (
+                            <button
+                              onClick={() => handleBlockAccount(sub)}
+                              className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 rounded-xl text-[10px] font-black uppercase transition flex items-center gap-1"
+                              title="Bloquear conta caso não haja pagamento"
+                            >
+                              <Ban className="w-3 h-3 text-red-600" />
+                              <span>Bloquear</span>
+                            </button>
+                          )}
+
+                          {/* Estender +15 min de teste caso queira */}
                           {(sub.status === 'teste' || sub.status === 'teste_expirado') && (
                             <button
                               onClick={() => handleExtendTrial(sub)}
-                              className="px-2 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-800 rounded-xl text-[10px] font-bold transition flex items-center gap-1"
+                              className="px-2 py-1.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-800 rounded-xl text-[10px] font-bold transition flex items-center gap-1"
                               title="Adicionar +15 minutos de teste gratuito"
                             >
                               <PlusCircle className="w-3 h-3" />
-                              <span>+15 min</span>
+                              <span>+15m</span>
                             </button>
                           )}
 
-                          {/* Bloquear / Ativar */}
-                          <button
-                            onClick={() => handleToggleStatus(sub.uid, sub.status)}
-                            className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase transition flex items-center gap-1 ${
-                              sub.status === 'ativo'
-                                ? 'bg-amber-100 hover:bg-amber-200 text-amber-900'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                            }`}
-                            title={sub.status === 'ativo' ? 'Bloquear Usuário' : 'Ativar Usuário'}
-                          >
-                            {sub.status === 'ativo' ? (
-                              <>
-                                <Lock className="w-3 h-3 text-amber-700" />
-                                <span>Bloquear</span>
-                              </>
-                            ) : (
-                              <>
-                                <Unlock className="w-3 h-3 text-slate-700" />
-                                <span>Ativar</span>
-                              </>
-                            )}
-                          </button>
-
-                          {/* Remover */}
+                          {/* Remover Registro */}
                           <button
                             onClick={() => handleDeleteSubscriber(sub.uid, sub.name)}
                             className="p-1.5 bg-slate-100 hover:bg-red-100 text-slate-500 hover:text-red-600 rounded-xl transition"
-                            title="Remover Registro"
+                            title="Remover Registro do Banco"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -568,7 +616,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
                   Cadastrar Novo Assinante
                 </h3>
                 <p className="text-[10px] text-cyan-600 font-bold">
-                  Definição de plano e liberação direta
+                  Computado diretamente no Banco de Dados (Firestore)
                 </p>
               </div>
               <button 
@@ -621,19 +669,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
                 />
               </div>
 
-              <div>
-                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
-                  Plano Contratado
-                </label>
-                <select
-                  value={newPlan}
-                  onChange={(e) => setNewPlan(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs text-slate-800 focus:outline-none focus:border-cyan-500 font-bold"
-                >
-                  <option value="Plano Básico">Plano Básico (R$ 10,00/mês)</option>
-                  <option value="Plano Avançado (Pro)">Plano Avançado (Pro) (R$ 20,00/mês)</option>
-                  <option value="Plano VIP">Plano VIP (R$ 49,00/mês)</option>
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                    Plano Contratado
+                  </label>
+                  <select
+                    value={newPlan}
+                    onChange={(e) => setNewPlan(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs text-slate-800 focus:outline-none focus:border-cyan-500 font-bold"
+                  >
+                    <option value="Plano Básico">Plano Básico (R$ 10,00)</option>
+                    <option value="Plano Avançado (Pro)">Plano Avançado (Pro) (R$ 20,00)</option>
+                    <option value="Plano VIP">Plano VIP (R$ 49,00)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                    Status Inicial
+                  </label>
+                  <select
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value as UserStatus)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs text-slate-800 focus:outline-none focus:border-cyan-500 font-bold"
+                  >
+                    <option value="teste">Em Teste (15 min)</option>
+                    <option value="ativo">Ativo (Pago)</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                </div>
               </div>
 
               <div className="pt-2">
@@ -642,7 +707,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
                   disabled={isSubmitting}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 rounded-2xl text-xs uppercase tracking-wider transition shadow-lg shadow-emerald-600/20 disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Salvando...' : 'Confirmar Cadastro'}
+                  {isSubmitting ? 'Salvando no Banco...' : 'Confirmar Cadastro'}
                 </button>
               </div>
             </form>
@@ -654,3 +719,4 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp, onS
     </div>
   );
 };
+

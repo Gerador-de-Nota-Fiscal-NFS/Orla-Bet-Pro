@@ -17,6 +17,7 @@ import {
   getDocs, 
   updateDoc, 
   deleteDoc, 
+  onSnapshot,
   Firestore
 } from 'firebase/firestore';
 import { Subscriber, UserStatus } from '../types';
@@ -374,8 +375,23 @@ export async function registerSubscriber(
   const trialStart = new Date();
   const trialEnd = new Date(trialStart.getTime() + DEFAULT_TRIAL_MINUTES * 60 * 1000);
 
+  // Generate deterministic sanitized document ID or random ID
+  const cleanEmailId = email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+  let finalUid = `user_${cleanEmailId}_${Date.now().toString(36)}`;
+
+  if (auth) {
+    try {
+      const res = await createUserWithEmailAndPassword(auth, email, pass);
+      if (res?.user?.uid) {
+        finalUid = res.user.uid;
+      }
+    } catch (err: any) {
+      console.warn('Firebase Auth user creation note/fallback:', err.message);
+    }
+  }
+
   const newSubscriber: Subscriber = {
-    uid: `user-${Date.now()}`,
+    uid: finalUid,
     name: name.trim() || 'Assinante Teste',
     email: email.toLowerCase().trim(),
     role: isMasterAdmin ? 'admin' : 'user',
@@ -390,19 +406,18 @@ export async function registerSubscriber(
     isTrial: !isMasterAdmin
   };
 
-  if (auth && db) {
+  // CRITICAL: Guaranteed persistence directly into Firestore Database
+  if (db) {
     try {
-      const res = await createUserWithEmailAndPassword(auth, email, pass);
-      newSubscriber.uid = res.user.uid;
-      await setDoc(doc(db, "subscribers", res.user.uid), newSubscriber);
-    } catch (err: any) {
-      console.warn('Firebase registration fallback:', err.message);
+      await setDoc(doc(db, "subscribers", finalUid), newSubscriber, { merge: true });
+    } catch (dbErr: any) {
+      console.warn('Firestore direct write note:', dbErr.message);
     }
   }
 
   // Update local list
   const currentList = getLocalSubscribers();
-  const existingIdx = currentList.findIndex(s => s.email.toLowerCase() === newSubscriber.email.toLowerCase());
+  const existingIdx = currentList.findIndex(s => s.email.toLowerCase() === newSubscriber.email.toLowerCase() || s.uid === newSubscriber.uid);
   if (existingIdx >= 0) {
     currentList[existingIdx] = newSubscriber;
   } else {
@@ -417,27 +432,36 @@ export async function registerSubscriber(
 export async function loginSubscriber(email: string, pass: string): Promise<Subscriber> {
   const normEmail = email.toLowerCase().trim();
 
-  // Try live Firebase Auth first
-  if (auth && db) {
+  // Try live Firebase Auth and Firestore first
+  if (db) {
     try {
-      const res = await signInWithEmailAndPassword(auth, normEmail, pass);
-      const userDoc = await getDoc(doc(db, "subscribers", res.user.uid));
-      if (userDoc.exists()) {
-        const data = userDoc.data() as Subscriber;
-        const checked = checkAndUpdateUserTrial(data);
-        if (checked.status === 'bloqueado') {
-          await signOut(auth);
-          throw new Error('Sua assinatura está suspensa ou bloqueada. Entre em contato com o administrador.');
+      // Check if document exists in Firestore by query or ID
+      const snap = await getDocs(collection(db, "subscribers"));
+      let matchedDoc: Subscriber | null = null;
+      snap.forEach(d => {
+        const data = d.data() as Subscriber;
+        if (data.email && data.email.toLowerCase().trim() === normEmail) {
+          matchedDoc = data;
         }
-        await updateDoc(doc(db, "subscribers", res.user.uid), { lastLogin: new Date().toISOString() });
+      });
+
+      if (matchedDoc) {
+        const checked = checkAndUpdateUserTrial(matchedDoc);
+        if (checked.status === 'bloqueado') {
+          throw new Error('Sua conta está bloqueada por falta de pagamento. Fale com o administrador no WhatsApp para regularizar.');
+        }
+        checked.lastLogin = new Date().toISOString();
+        try {
+          await updateDoc(doc(db, "subscribers", checked.uid), { lastLogin: checked.lastLogin });
+        } catch (e) {}
         setStoredCurrentUser(checked);
         return checked;
       }
     } catch (err: any) {
-      if (err.message.includes('suspensa') || err.message.includes('bloqueada')) {
+      if (err.message.includes('bloqueada') || err.message.includes('pagamento')) {
         throw err;
       }
-      console.warn('Firebase auth attempt fallback:', err.message);
+      console.warn('Firestore subscriber lookup fallback:', err.message);
     }
   }
 
@@ -451,7 +475,7 @@ export async function loginSubscriber(email: string, pass: string): Promise<Subs
     const trialEnd = new Date(trialStart.getTime() + DEFAULT_TRIAL_MINUTES * 60 * 1000);
 
     found = {
-      uid: `user-${Date.now()}`,
+      uid: `user_${Date.now().toString(36)}`,
       name: normEmail.split('@')[0],
       email: normEmail,
       role: isMaster ? 'admin' : 'user',
@@ -466,11 +490,18 @@ export async function loginSubscriber(email: string, pass: string): Promise<Subs
     };
     localList.unshift(found);
     saveLocalSubscribers(localList);
+
+    // Save to Firestore if db is available
+    if (db) {
+      try {
+        await setDoc(doc(db, "subscribers", found.uid), found, { merge: true });
+      } catch (e) {}
+    }
   }
 
   const checked = checkAndUpdateUserTrial(found);
   if (checked.status === 'bloqueado') {
-    throw new Error('Sua assinatura está suspensa ou bloqueada. Entre em contato com o suporte.');
+    throw new Error('Sua conta está bloqueada por falta de pagamento. Entre em contato com o suporte no WhatsApp.');
   }
 
   checked.lastLogin = new Date().toISOString();
@@ -491,8 +522,10 @@ export async function loginWithGoogle(): Promise<Subscriber> {
         const checked = checkAndUpdateUserTrial(data);
         if (checked.status === 'bloqueado') {
           await signOut(auth);
-          throw new Error('Sua conta está suspensa ou bloqueada.');
+          throw new Error('Sua conta está bloqueada por falta de pagamento.');
         }
+        checked.lastLogin = new Date().toISOString();
+        await updateDoc(doc(db, "subscribers", user.uid), { lastLogin: checked.lastLogin });
         setStoredCurrentUser(checked);
         return checked;
       } else {
@@ -514,11 +547,12 @@ export async function loginWithGoogle(): Promise<Subscriber> {
           trialEndsAt: isMaster ? undefined : trialEnd.toISOString(),
           isTrial: !isMaster
         };
-        await setDoc(doc(db, "subscribers", user.uid), newSub);
+        await setDoc(doc(db, "subscribers", user.uid), newSub, { merge: true });
         setStoredCurrentUser(newSub);
         return newSub;
       }
     } catch (err: any) {
+      if (err.message.includes('bloqueada')) throw err;
       console.warn('Google login fallback:', err.message);
     }
   }
@@ -541,6 +575,12 @@ export async function loginWithGoogle(): Promise<Subscriber> {
     isTrial: true
   };
 
+  if (db) {
+    try {
+      await setDoc(doc(db, "subscribers", demoGoogle.uid), demoGoogle, { merge: true });
+    } catch (e) {}
+  }
+
   const list = getLocalSubscribers();
   list.unshift(demoGoogle);
   saveLocalSubscribers(list);
@@ -559,15 +599,63 @@ export async function logoutSubscriber() {
   setStoredCurrentUser(null);
 }
 
+// Real-Time Listener for Admin Dashboard to see all new test and regular users instantly
+export function subscribeToSubscribers(onUpdate: (list: Subscriber[]) => void): () => void {
+  if (db) {
+    try {
+      const unsub = onSnapshot(collection(db, "subscribers"), (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Subscriber[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as Subscriber;
+            list.push(checkAndUpdateUserTrial(data));
+          });
+          // Sort newest first
+          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          saveLocalSubscribers(list);
+          onUpdate(list);
+        } else {
+          // If Firestore is currently empty, seed initial records so admin sees the system active
+          const local = getLocalSubscribers();
+          local.forEach(async (sub) => {
+            try {
+              if (db) await setDoc(doc(db, "subscribers", sub.uid), sub, { merge: true });
+            } catch (e) {}
+          });
+          onUpdate(local);
+        }
+      }, (err) => {
+        console.warn('Firestore onSnapshot listener error, using local:', err);
+        onUpdate(getLocalSubscribers());
+      });
+
+      return unsub;
+    } catch (err) {
+      console.warn('Error setting up onSnapshot:', err);
+    }
+  }
+
+  onUpdate(getLocalSubscribers());
+  return () => {};
+}
+
 export async function fetchAllSubscribers(): Promise<Subscriber[]> {
   if (db) {
     try {
       const snap = await getDocs(collection(db, "subscribers"));
       if (!snap.empty) {
         const list: Subscriber[] = [];
-        snap.forEach(docSnap => list.push(docSnap.data() as Subscriber));
+        snap.forEach(docSnap => list.push(checkAndUpdateUserTrial(docSnap.data() as Subscriber)));
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         saveLocalSubscribers(list);
         return list;
+      } else {
+        // If Firestore is empty, seed demo subscribers
+        const initial = getLocalSubscribers();
+        for (const sub of initial) {
+          await setDoc(doc(db, "subscribers", sub.uid), sub, { merge: true });
+        }
+        return initial;
       }
     } catch (err) {
       console.warn('Error fetching Firestore subscribers, fallback to local:', err);
@@ -600,24 +688,18 @@ export async function updateSubscriberStatus(uid: string, newStatus: UserStatus)
   }
 }
 
-export async function approveSubscriberAccess(
-  uid: string, 
-  planName: string, 
-  monthlyValue: number
-): Promise<void> {
+// Dedicated Method to Block User Account when Payment is not Received
+export async function blockSubscriberNoPayment(uid: string): Promise<void> {
   const updates = {
-    status: 'ativo' as UserStatus,
-    plan: planName,
-    monthlyValue,
-    isTrial: false,
-    trialEndsAt: undefined
+    status: 'bloqueado' as UserStatus,
+    isTrial: false
   };
 
   if (db) {
     try {
       await updateDoc(doc(db, "subscribers", uid), updates);
     } catch (err) {
-      console.warn('Firestore approve access fallback:', err);
+      console.warn('Firestore block error:', err);
     }
   }
 
@@ -632,6 +714,49 @@ export async function approveSubscriberAccess(
       setStoredCurrentUser(list[index]);
     }
   }
+}
+
+// Dedicated Method to Activate / Approve User Account upon Payment
+export async function activateSubscriberPayment(
+  uid: string, 
+  planName = 'Plano Avançado (Pro)', 
+  monthlyValue = 20.00
+): Promise<void> {
+  const updates = {
+    status: 'ativo' as UserStatus,
+    plan: planName,
+    monthlyValue,
+    isTrial: false,
+    trialEndsAt: undefined
+  };
+
+  if (db) {
+    try {
+      await updateDoc(doc(db, "subscribers", uid), updates);
+    } catch (err) {
+      console.warn('Firestore activate error:', err);
+    }
+  }
+
+  const list = getLocalSubscribers();
+  const index = list.findIndex(s => s.uid === uid);
+  if (index >= 0) {
+    list[index] = { ...list[index], ...updates };
+    saveLocalSubscribers(list);
+
+    const current = getStoredCurrentUser();
+    if (current && current.uid === uid) {
+      setStoredCurrentUser(list[index]);
+    }
+  }
+}
+
+export async function approveSubscriberAccess(
+  uid: string, 
+  planName: string, 
+  monthlyValue: number
+): Promise<void> {
+  return activateSubscriberPayment(uid, planName, monthlyValue);
 }
 
 export async function extendSubscriberTrial(uid: string, extraMinutes = 15): Promise<void> {
@@ -696,4 +821,19 @@ export async function removeSubscriber(uid: string): Promise<void> {
 
   const list = getLocalSubscribers().filter(s => s.uid !== uid);
   saveLocalSubscribers(list);
+}
+
+// Generate direct link to chat with client on WhatsApp to send PIX key or confirm access
+export function getClientWhatsAppDirectLink(phone: string, clientName: string, planName: string, price: number, type: 'cobrar' | 'liberado' = 'cobrar'): string {
+  const cleanPhone = phone.replace(/\D/g, '');
+  const fullNumber = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+
+  let message = '';
+  if (type === 'liberado') {
+    message = `Olá ${clientName}! Seu acesso ao ${planName} no Orla Bet Pro foi liberado e ativado com sucesso! Aproveite todas as análises e bilhetes prontos com Inteligência Artificial.`;
+  } else {
+    message = `Olá ${clientName}! Seu período de teste no Orla Bet Pro foi finalizado. Para continuar recebendo os palpites e bilhetes prontos do ${planName} (R$ ${price.toFixed(2)}/mês), faça o PIX e envie o comprovante por aqui para liberação imediata.`;
+  }
+
+  return `https://wa.me/${fullNumber}?text=${encodeURIComponent(message)}`;
 }

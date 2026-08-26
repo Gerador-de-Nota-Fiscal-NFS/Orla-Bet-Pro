@@ -6,10 +6,11 @@ export interface AIAnalysisRequest {
   gamesContext: GameFixture[];
   selectedMatch?: GameFixture;
   chatHistory?: { sender: 'user' | 'bot'; text: string }[];
+  mode?: 'tipster' | 'general';
 }
 
 export async function askOrlaAI(request: AIAnalysisRequest): Promise<string> {
-  const { message, gamesContext, selectedMatch, chatHistory } = request;
+  const { message, gamesContext, selectedMatch, chatHistory, mode = 'tipster' } = request;
 
   // Prepare a concise summary of the day's games for context
   const gamesSummary = gamesContext.slice(0, 12).map(g => {
@@ -31,7 +32,8 @@ export async function askOrlaAI(request: AIAnalysisRequest): Promise<string> {
           date: selectedMatch.fixture.date,
           status: selectedMatch.fixture.status.short
         } : null,
-        chatHistory: chatHistory?.slice(-4)
+        chatHistory: chatHistory?.slice(-4),
+        mode
       })
     });
 
@@ -46,13 +48,14 @@ export async function askOrlaAI(request: AIAnalysisRequest): Promise<string> {
   }
 
   // Local Contextual AI Fallback Engine
-  return generateContextualLocalResponse(message, gamesContext, selectedMatch);
+  return generateContextualLocalResponse(message, gamesContext, selectedMatch, mode);
 }
 
 function generateContextualLocalResponse(
   message: string, 
   games: GameFixture[], 
-  selectedMatch?: GameFixture
+  selectedMatch?: GameFixture,
+  mode: 'tipster' | 'general' = 'tipster'
 ): string {
   const lower = message.toLowerCase().trim();
 

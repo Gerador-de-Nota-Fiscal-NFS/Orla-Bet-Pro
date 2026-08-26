@@ -39,6 +39,9 @@ import {
   OrlaAIChat 
 } from './components/OrlaAIChat';
 import { 
+  WeeklyPerformanceReport 
+} from './components/WeeklyPerformanceReport';
+import { 
   ToastContainer, 
   ToastMessage 
 } from './components/Toast';
@@ -94,6 +97,7 @@ export function App() {
   const [isBetslipOpen, setIsBetslipOpen] = useState<boolean>(false);
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
   const [isPlansOpen, setIsPlansOpen] = useState<boolean>(false);
+  const [isWeeklyReportOpen, setIsWeeklyReportOpen] = useState<boolean>(false);
   const [isSecretAdminOpen, setIsSecretAdminOpen] = useState<boolean>(false);
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
   const [chatGameContext, setChatGameContext] = useState<GameFixture | undefined>(undefined);
@@ -304,6 +308,7 @@ export function App() {
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenPlans={() => setIsPlansOpen(true)}
+        onOpenWeeklyReport={() => setIsWeeklyReportOpen(true)}
         onLogout={handleLogout}
         currentView={currentView}
         onNavigate={setCurrentView}
@@ -694,6 +699,12 @@ export function App() {
         onClose={() => setIsChatOpen(false)}
         games={games}
         selectedMatch={chatGameContext}
+        onShowToast={showToast}
+      />
+
+      <WeeklyPerformanceReport
+        isOpen={isWeeklyReportOpen}
+        onClose={() => setIsWeeklyReportOpen(false)}
         onShowToast={showToast}
       />
 

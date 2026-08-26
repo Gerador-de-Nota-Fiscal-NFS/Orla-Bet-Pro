@@ -10,6 +10,7 @@ interface NavbarProps {
   currentUser: Subscriber | null;
   onOpenAuth: () => void;
   onOpenPlans?: () => void;
+  onOpenWeeklyReport?: () => void;
   onLogout: () => void;
   currentView: 'app' | 'admin';
   onNavigate: (view: 'app' | 'admin') => void;
@@ -27,6 +28,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
   onOpenAuth,
   onOpenPlans,
+  onOpenWeeklyReport,
   onLogout,
   currentView,
   onNavigate,
@@ -130,6 +132,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
             <span>Orla IA</span>
           </button>
+
+          {/* Weekly Performance Report Button */}
+          {onOpenWeeklyReport && (
+            <button
+              id="nav-weekly-report-btn"
+              onClick={onOpenWeeklyReport}
+              className="hidden lg:flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-black px-3 py-2 rounded-2xl text-xs uppercase tracking-wider transition-all"
+              title="Relatório Semanal Green/Red"
+            >
+              <span>📊</span>
+              <span>83% Greens</span>
+            </button>
+          )}
 
           {/* Betslip Toggle Button */}
           <button

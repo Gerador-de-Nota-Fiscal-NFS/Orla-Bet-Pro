@@ -32,13 +32,14 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
   selectedMatch,
   onShowToast
 }) => {
+  const [aiMode, setAiMode] = useState<'tipster' | 'general'>('tipster');
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome-1',
       sender: 'bot',
       text: `🦁 **Olá! Eu sou a Orla IA Universal**, seu motor analítico esportivo de alta precisão.\n\n` +
         `Estou conectada aos dados em tempo real dos **${games.length} jogos** carregados hoje.\n\n` +
-        `Você pode me perguntar sobre probabilidades de vitória, expectativa de gols (xG), tendências de escanteios ou pedir um bilhete múltiplo seguro!`,
+        `Você pode alternar entre os modos **🎯 Tipster (+EV)** ou **🧠 Analista Tático Geral** no topo da tela para obter análises sob medida!`,
       timestamp: new Date().toISOString()
     }
   ]);
@@ -85,7 +86,8 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
         message: query,
         gamesContext: games,
         selectedMatch,
-        chatHistory: messages.map(m => ({ sender: m.sender, text: m.text }))
+        chatHistory: messages.map(m => ({ sender: m.sender, text: m.text })),
+        mode: aiMode
       });
 
       const botMsg: ChatMessage = {
@@ -121,7 +123,7 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
   return (
     <div 
       id="orla-ai-chat-drawer"
-      className="fixed bottom-4 right-4 z-50 w-[94vw] sm:w-[420px] h-[580px] max-h-[85vh] bg-white rounded-3xl shadow-2xl border border-purple-200 flex flex-col overflow-hidden animate-fadeIn"
+      className="fixed bottom-4 right-4 z-50 w-[94vw] sm:w-[420px] h-[590px] max-h-[85vh] bg-white rounded-3xl shadow-2xl border border-purple-200 flex flex-col overflow-hidden animate-fadeIn"
     >
       {/* Chat Header */}
       <div className="p-4 bg-gradient-to-r from-purple-700 via-indigo-700 to-blue-700 text-white flex justify-between items-center shrink-0">
@@ -139,7 +141,7 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
               </span>
             </div>
             <p className="text-[10px] text-purple-200 font-medium">
-              Especialista em Futebol & Apostas (+EV)
+              {aiMode === 'tipster' ? 'Modo: Tipster & Valor (+EV)' : 'Modo: Analista Tático Geral'}
             </p>
           </div>
         </div>
@@ -150,6 +152,33 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
         >
           ✕
         </button>
+      </div>
+
+      {/* Mode Selector Bar */}
+      <div className="bg-purple-950/90 text-white px-3 py-2 flex items-center justify-between text-[11px] font-bold border-b border-purple-800/60">
+        <span className="text-[10px] text-purple-300 font-semibold">Perfil de Análise:</span>
+        <div className="flex items-center gap-1 bg-black/30 p-0.5 rounded-xl border border-white/10">
+          <button
+            onClick={() => setAiMode('tipster')}
+            className={`px-2 py-0.5 rounded-lg text-[10px] font-black transition ${
+              aiMode === 'tipster' 
+                ? 'bg-purple-600 text-white shadow-sm' 
+                : 'text-purple-300 hover:text-white'
+            }`}
+          >
+            🎯 Tipster (+EV)
+          </button>
+          <button
+            onClick={() => setAiMode('general')}
+            className={`px-2 py-0.5 rounded-lg text-[10px] font-black transition ${
+              aiMode === 'general' 
+                ? 'bg-indigo-600 text-white shadow-sm' 
+                : 'text-purple-300 hover:text-white'
+            }`}
+          >
+            🧠 Tático Geral
+          </button>
+        </div>
       </div>
 
       {/* Match Context Pill if match is loaded */}

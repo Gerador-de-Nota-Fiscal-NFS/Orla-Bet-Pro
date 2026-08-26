@@ -515,28 +515,45 @@ export async function loginWithGoogle(): Promise<Subscriber> {
     try {
       const res = await signInWithPopup(auth, googleProvider);
       const user = res.user;
-      const userDoc = await getDoc(doc(db, "subscribers", user.uid));
-      
-      if (userDoc.exists()) {
-        const data = userDoc.data() as Subscriber;
+      const normEmail = (user.email || '').toLowerCase().trim();
+
+      // Check by user.uid first
+      let userDoc = await getDoc(doc(db, "subscribers", user.uid));
+      let data: Subscriber | null = userDoc.exists() ? (userDoc.data() as Subscriber) : null;
+
+      // If not found by UID, check if document exists with this email across subscribers (Anti-Burla check)
+      if (!data && normEmail) {
+        const snap = await getDocs(collection(db, "subscribers"));
+        snap.forEach(d => {
+          const item = d.data() as Subscriber;
+          if (item.email && item.email.toLowerCase().trim() === normEmail) {
+            data = item;
+          }
+        });
+      }
+
+      if (data) {
         const checked = checkAndUpdateUserTrial(data);
         if (checked.status === 'bloqueado') {
           await signOut(auth);
-          throw new Error('Sua conta está bloqueada por falta de pagamento.');
+          throw new Error('Sua conta está bloqueada por falta de pagamento. Fale com o administrador no WhatsApp.');
         }
         checked.lastLogin = new Date().toISOString();
-        await updateDoc(doc(db, "subscribers", user.uid), { lastLogin: checked.lastLogin });
+        try {
+          await updateDoc(doc(db, "subscribers", checked.uid), { lastLogin: checked.lastLogin });
+        } catch (e) {}
         setStoredCurrentUser(checked);
         return checked;
       } else {
-        const isMaster = user.email?.toLowerCase().includes('admin') || user.email?.toLowerCase() === MASTER_ADMIN_EMAIL;
+        // First time user ever logs in
+        const isMaster = normEmail.includes('admin') || normEmail === MASTER_ADMIN_EMAIL;
         const trialStart = new Date();
         const trialEnd = new Date(trialStart.getTime() + DEFAULT_TRIAL_MINUTES * 60 * 1000);
 
         const newSub: Subscriber = {
           uid: user.uid,
-          name: user.displayName || 'Assinante Google VIP',
-          email: user.email || 'google@user.com',
+          name: user.displayName || 'Assinante Google',
+          email: normEmail || 'google@user.com',
           role: isMaster ? 'admin' : 'user',
           status: isMaster ? 'ativo' : 'teste',
           plan: isMaster ? 'Plano VIP' : 'Plano Avançado (Pro)',
@@ -548,6 +565,15 @@ export async function loginWithGoogle(): Promise<Subscriber> {
           isTrial: !isMaster
         };
         await setDoc(doc(db, "subscribers", user.uid), newSub, { merge: true });
+        
+        const localList = getLocalSubscribers();
+        const idx = localList.findIndex(s => s.email.toLowerCase() === normEmail);
+        if (idx >= 0) {
+          localList[idx] = newSub;
+        } else {
+          localList.unshift(newSub);
+        }
+        saveLocalSubscribers(localList);
         setStoredCurrentUser(newSub);
         return newSub;
       }
@@ -557,35 +583,47 @@ export async function loginWithGoogle(): Promise<Subscriber> {
     }
   }
 
-  // Quick fallback login for Google
-  const trialStart = new Date();
-  const trialEnd = new Date(trialStart.getTime() + DEFAULT_TRIAL_MINUTES * 60 * 1000);
-  const demoGoogle: Subscriber = {
-    uid: 'google-user-' + Date.now(),
-    name: 'Usuário Google (Teste)',
-    email: 'usuario.google@orlabet.com',
-    role: 'user',
-    status: 'teste',
-    plan: 'Plano Avançado (Pro)',
-    monthlyValue: 20.00,
-    createdAt: trialStart.toISOString(),
-    lastLogin: trialStart.toISOString(),
-    trialStartedAt: trialStart.toISOString(),
-    trialEndsAt: trialEnd.toISOString(),
-    isTrial: true
-  };
+  // Deterministic Anti-Burla Fallback (Never resets trial on repeat logins)
+  const normEmail = 'usuario.google@orlabet.com';
+  const localList = getLocalSubscribers();
+  let found = localList.find(s => s.email.toLowerCase() === normEmail);
 
-  if (db) {
-    try {
-      await setDoc(doc(db, "subscribers", demoGoogle.uid), demoGoogle, { merge: true });
-    } catch (e) {}
+  if (!found) {
+    const trialStart = new Date();
+    const trialEnd = new Date(trialStart.getTime() + DEFAULT_TRIAL_MINUTES * 60 * 1000);
+    found = {
+      uid: 'google_user_permanent_id',
+      name: 'Usuário Google (Teste)',
+      email: normEmail,
+      role: 'user',
+      status: 'teste',
+      plan: 'Plano Avançado (Pro)',
+      monthlyValue: 20.00,
+      createdAt: trialStart.toISOString(),
+      lastLogin: trialStart.toISOString(),
+      trialStartedAt: trialStart.toISOString(),
+      trialEndsAt: trialEnd.toISOString(),
+      isTrial: true
+    };
+    localList.unshift(found);
+    saveLocalSubscribers(localList);
+
+    if (db) {
+      try {
+        await setDoc(doc(db, "subscribers", found.uid), found, { merge: true });
+      } catch (e) {}
+    }
   }
 
-  const list = getLocalSubscribers();
-  list.unshift(demoGoogle);
-  saveLocalSubscribers(list);
-  setStoredCurrentUser(demoGoogle);
-  return demoGoogle;
+  const checked = checkAndUpdateUserTrial(found);
+  if (checked.status === 'bloqueado') {
+    throw new Error('Sua conta está bloqueada por falta de pagamento.');
+  }
+
+  checked.lastLogin = new Date().toISOString();
+  saveLocalSubscribers(localList);
+  setStoredCurrentUser(checked);
+  return checked;
 }
 
 export async function logoutSubscriber() {

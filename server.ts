@@ -53,7 +53,7 @@ app.get('/api/health', (req, res) => {
 // 1. Orla IA Universal Chat Endpoint (Gemini 3.7 Flash)
 app.post('/api/ai/chat', async (req, res) => {
   try {
-    const { message, gamesSummary, selectedMatch, chatHistory } = req.body;
+    const { message, gamesSummary, selectedMatch, chatHistory, mode = 'tipster' } = req.body;
 
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Mensagem inválida' });
@@ -62,18 +62,26 @@ app.post('/api/ai/chat', async (req, res) => {
     const ai = getGenAI();
 
     if (ai) {
-      const systemInstruction = `Você é a "Orla IA Universal", o motor analítico e especialista sênior em apostas esportivas, futebol global e estatísticas da plataforma "Orla Bet".
-Suas respostas devem ser em Português do Brasil (pt-BR), diretas, elegantes, bem formatadas em Markdown com tópicos claros, emojis moderados e foco em valor esperado (+EV), probabilidade estatística, xG (Expected Goals), escanteios, gols e gestão de banca (1% a 2% de stake).
+      const modeInstruction = mode === 'tipster'
+        ? `MODO ATUAL: [TIPSTER & BILHETES DE VALOR ESPERADO (+EV)]
+Seu objetivo é identificar as melhores entradas, bilhetes prontos, odds desajustadas, valor esperado (+EV), mercados de gols (Over/Under, BTTS), escanteios e gestão rígida de stake (1% a 2% da banca). Forneça odds estimadas, probabilidade calculada e justificativa pontual.`
+        : `MODO ATUAL: [ANALISTA TÁTICO & ESTATÍSTICO GERAL]
+Seu objetivo é fornecer análises táticas aprofundadas, confrontos diretos (H2H), momentos dos elencos, peso do mando de campo, volume ofensivo e comportamento das equipes nos campeonatos.`;
+
+      const systemInstruction = `Você é a "Orla IA Universal", o motor analítico e especialista sênior em futebol global e apostas esportivas da plataforma "Orla Bet".
+Suas respostas devem ser em Português do Brasil (pt-BR), elegantes, profissionais, bem formatadas em Markdown com títulos claros, tópicos objetivos e emojis moderados.
+
+${modeInstruction}
 
 Contexto dos confrontos carregados hoje no painel:
 ${gamesSummary || 'Confrontos das principais ligas (Brasileirão, Champions League, Premier League, Libertadores, etc.)'}
 
 ${selectedMatch ? `Partida selecionada pelo usuário: ${JSON.stringify(selectedMatch)}` : ''}
 
-Diretrizes:
-- Se o usuário perguntar sobre um time ou jogo específico do dia, utilize as probabilidades reais, expectativa de gols e sugira mercados inteligentes.
-- Se pedir sugestões de bilhetes múltiplos, liste seleções de alto valor com odds calculadas e recomendação de gestão de banca.
-- Mantenha sempre um tom profissional, analítico e motivador, lembrando sempre sobre responsabilidade e gestão de risco.`;
+Diretrizes Obrigatórias:
+- Sempre utilize os dados fornecidos dos jogos, probabilidades e expectativa de gols (xG).
+- Nunca invente placares passados ou estatísticas fictícias quando dados reais estiverem disponíveis.
+- Sempre reforce o princípio de gestão de banca responsável (sem promessas de ganho fácil).`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.7-flash',
@@ -83,7 +91,7 @@ Diretrizes:
         ].join('\n\n'),
         config: {
           systemInstruction,
-          temperature: 0.7
+          temperature: 0.65
         }
       });
 

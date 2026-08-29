@@ -2,13 +2,35 @@ import React, { useEffect, useState } from 'react';
 import { X, ShieldAlert, Sparkles, BarChart2, CornerRightDown, PlusCircle, MessageSquare, History } from 'lucide-react';
 import { GameFixture, H2HMatch, BetSelection } from '../types';
 import { calculateProbabilities, fetchHeadToHead } from '../services/apiSports';
-import { getMascotData } from '../services/mascotService';
 
 interface MatchAnalysisModalProps {
   game: GameFixture | null;
   onClose: () => void;
   onAddToBetslip: (bet: BetSelection) => void;
   onAskAI: (game: GameFixture) => void;
+}
+
+// Gerador visual interno seguro (sem depender de arquivos externos)
+function getDynamicMascot(teamName: string) {
+  const name = (teamName || 'Futebol').trim();
+  const cleanName = name.replace(/[^a-zA-Z0-9]/g, '');
+  const emoji = (cleanName.substring(0, 3) || 'FUT').toUpperCase();
+
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  const hue = Math.abs(hash) % 360;
+  const primaryColor = `hsl(${hue}, 70%, 45%)`;
+  const secondaryColor = `hsl(${(hue + 40) % 360}, 65%, 25%)`;
+  const bg = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
+
+  return {
+    emoji,
+    nickname: `Clube ${name.split(' ')[0]}`,
+    bg
+  };
 }
 
 export const MatchAnalysisModal: React.FC<MatchAnalysisModalProps> = ({
@@ -33,8 +55,8 @@ export const MatchAnalysisModal: React.FC<MatchAnalysisModalProps> = ({
   if (!game) return null;
 
   const probs = calculateProbabilities(game.fixture.id, game.teams.home.id, game.teams.away.id, h2hList);
-  const homeMascot = getMascotData(game.teams.home.name);
-  const awayMascot = getMascotData(game.teams.away.name);
+  const homeMascot = getDynamicMascot(game.teams.home.name);
+  const awayMascot = getDynamicMascot(game.teams.away.name);
 
   const vipBetSelection: BetSelection = {
     fixtureId: game.fixture.id,
@@ -82,7 +104,7 @@ export const MatchAnalysisModal: React.FC<MatchAnalysisModalProps> = ({
           <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
             <div className="text-center">
               <div 
-                className="w-12 h-12 mx-auto rounded-2xl flex items-center justify-center text-2xl shadow-md mb-2 border-2 border-white"
+                className="w-12 h-12 mx-auto rounded-2xl flex items-center justify-center text-2xl shadow-md mb-2 border-2 border-white text-white font-black"
                 style={{ background: homeMascot.bg }}
               >
                 {homeMascot.emoji}
@@ -94,7 +116,7 @@ export const MatchAnalysisModal: React.FC<MatchAnalysisModalProps> = ({
 
             <div className="text-center">
               <div 
-                className="w-12 h-12 mx-auto rounded-2xl flex items-center justify-center text-2xl shadow-md mb-2 border-2 border-white"
+                className="w-12 h-12 mx-auto rounded-2xl flex items-center justify-center text-2xl shadow-md mb-2 border-2 border-white text-white font-black"
                 style={{ background: awayMascot.bg }}
               >
                 {awayMascot.emoji}

@@ -1,8 +1,8 @@
 import { GameFixture, H2HMatch, MatchProbabilities } from '../types';
 
 export const API_CONFIG = {
-  KEY: '285a53545d71d0051c5041a63eac4140',
-  HOST: 'v3.football.api-sports.io',
+  KEY: 'e9e2276e06msh79a626961eabab5p1317b2jsn2d38f8735d8a',
+  HOST: 'free-api-live-football-data.p.rapidapi.com',
   LEAGUES: [
     71, 72, 73, 128, 13, 11, 2, 3, 39, 140, 78, 135, 61, 475, 476, 477, 478, 480, 253, 94, 307, 88
   ]

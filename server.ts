@@ -111,27 +111,40 @@ Diretrizes Obrigatórias:
 app.get('/api/football/fixtures', async (req, res) => {
   try {
     const dateStr = (req.query.date as string) || new Date().toISOString().split('T')[0];
-    const apiKey = process.env.API_SPORTS_KEY || '285a53545d71d0051c5041a63eac4140';
-    const host = 'v3.football.api-sports.io';
+    const apiKey = process.env.API_SPORTS_KEY || 'e9e2276e06msh79a626961eabab5p1317b2jsn2d38f8735d8a';
+    const host = process.env.API_SPORTS_HOST || 'free-api-live-football-data.p.rapidapi.com';
 
     const now = Date.now();
     if (fixturesCache[dateStr] && (now - fixturesCache[dateStr].timestamp < CACHE_TTL_MS)) {
       return res.json(fixturesCache[dateStr].data);
     }
 
-    const apiRes = await fetch(`https://${host}/fixtures?date=${dateStr}&timezone=America/Sao_Paulo`, {
+    // Try RapidAPI endpoints with proper headers
+    let apiRes = await fetch(`https://${host}/fixtures?date=${encodeURIComponent(dateStr)}&timezone=America/Sao_Paulo`, {
       headers: {
-        'x-apisports-key': apiKey,
+        'Content-Type': 'application/json',
+        'x-rapidapi-key': apiKey,
         'x-rapidapi-host': host
       }
     });
 
     if (!apiRes.ok) {
-      return res.status(apiRes.status).json({ error: 'Falha na resposta da API-Sports' });
+      // Fallback try with football-get-all-matches-by-date
+      apiRes = await fetch(`https://${host}/football-get-all-matches-by-date?date=${encodeURIComponent(dateStr)}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-rapidapi-key': apiKey,
+          'x-rapidapi-host': host
+        }
+      });
+    }
+
+    if (!apiRes.ok) {
+      return res.status(apiRes.status).json({ error: 'Falha na resposta da API RapidAPI Football' });
     }
 
     const data = await apiRes.json();
-    const matches = data.response || [];
+    const matches = data.response || data.matches || data.data || data.result || [];
 
     fixturesCache[dateStr] = { timestamp: now, data: matches };
     res.json(matches);
@@ -157,28 +170,66 @@ app.get('/api/football/h2h', async (req, res) => {
       return res.json(h2hCache[cacheKey].data);
     }
 
-    const apiKey = process.env.API_SPORTS_KEY || '285a53545d71d0051c5041a63eac4140';
-    const host = 'v3.football.api-sports.io';
+    const apiKey = process.env.API_SPORTS_KEY || 'e9e2276e06msh79a626961eabab5p1317b2jsn2d38f8735d8a';
+    const host = process.env.API_SPORTS_HOST || 'free-api-live-football-data.p.rapidapi.com';
 
-    const apiRes = await fetch(`https://${host}/fixtures/headtohead?h2h=${home}-${away}&last=6`, {
+    let apiRes = await fetch(`https://${host}/fixtures/headtohead?h2h=${encodeURIComponent(home)}-${encodeURIComponent(away)}&last=6`, {
       headers: {
-        'x-apisports-key': apiKey,
+        'Content-Type': 'application/json',
+        'x-rapidapi-key': apiKey,
         'x-rapidapi-host': host
       }
     });
+
+    if (!apiRes.ok) {
+      apiRes = await fetch(`https://${host}/football-get-head-to-head?teamoneid=${encodeURIComponent(home)}&teamtwoid=${encodeURIComponent(away)}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-rapidapi-key': apiKey,
+          'x-rapidapi-host': host
+        }
+      });
+    }
 
     if (!apiRes.ok) {
       return res.status(apiRes.status).json({ error: 'Falha na resposta H2H' });
     }
 
     const data = await apiRes.json();
-    const matches = data.response || [];
+    const matches = data.response || data.matches || data.data || [];
 
     h2hCache[cacheKey] = { timestamp: now, data: matches };
     res.json(matches);
   } catch (error: any) {
     console.error('Error in /api/football/h2h:', error);
     res.status(500).json({ error: 'Erro ao buscar histórico direto', details: error.message });
+  }
+});
+
+// 4. Players Search Proxy (endpoint fornecido pelo usuário)
+app.get('/api/football/players-search', async (req, res) => {
+  try {
+    const search = (req.query.search as string) || 'm';
+    const apiKey = process.env.API_SPORTS_KEY || 'e9e2276e06msh79a626961eabab5p1317b2jsn2d38f8735d8a';
+    const host = process.env.API_SPORTS_HOST || 'free-api-live-football-data.p.rapidapi.com';
+
+    const apiRes = await fetch(`https://${host}/football-players-search?search=${encodeURIComponent(search)}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-rapidapi-host': host,
+        'x-rapidapi-key': apiKey
+      }
+    });
+
+    if (!apiRes.ok) {
+      return res.status(apiRes.status).json({ error: 'Falha ao buscar jogadores na RapidAPI' });
+    }
+
+    const data = await apiRes.json();
+    res.json(data);
+  } catch (error: any) {
+    console.error('Error in /api/football/players-search:', error);
+    res.status(500).json({ error: 'Erro interno ao buscar jogadores', details: error.message });
   }
 });
 

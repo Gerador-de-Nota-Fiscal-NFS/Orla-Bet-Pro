@@ -33,10 +33,10 @@ export const LEAGUE_LABELS: Record<number, { name: string; flag: string; categor
   88: { name: 'Eredivisie', flag: '🇳🇱', category: 'Europa' }
 };
 
-// In-memory caches to respect rate limits
+// Cache desativado (0) para forçar atualização instantânea dos jogos
 const fixturesCache: Record<string, { timestamp: number; data: GameFixture[] }> = {};
 const h2hCache: Record<string, H2HMatch[]> = {};
-const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+const CACHE_TTL_MS = 0; 
 
 export function calculateProbabilities(
   fixtureId: number, 
@@ -44,17 +44,14 @@ export function calculateProbabilities(
   awayId: number,
   h2hData?: H2HMatch[]
 ): MatchProbabilities {
-  // Deterministic seed based on unique ids
   const seed = Math.abs((fixtureId * 31 + homeId * 17 + awayId * 7) % 100);
   
-  // 1. Base weights: Form (35%), Head-to-Head (25%), Attack/Defense xG (20%), Context/Home factor (20%)
   const baseHomeStrength = 42 + (seed % 28);
   const baseDrawStrength = 22 + (seed % 10);
   let homeWin = baseHomeStrength;
   let drawProb = baseDrawStrength;
   let awayWin = Math.max(12, 100 - (homeWin + drawProb));
 
-  // 2. Head-to-Head weighting
   if (h2hData && h2hData.length > 0) {
     let homeH2hWins = 0;
     let awayH2hWins = 0;
@@ -84,7 +81,6 @@ export function calculateProbabilities(
     }
   }
 
-  // Normalize to 100%
   const total = homeWin + drawProb + awayWin;
   homeWin = Math.round((homeWin / total) * 100);
   drawProb = Math.round((drawProb / total) * 100);
@@ -94,13 +90,11 @@ export function calculateProbabilities(
     homeWin >= awayWin && homeWin >= drawProb ? 'home' :
     awayWin >= homeWin && awayWin >= drawProb ? 'away' : 'draw';
 
-  // Statistical expected metrics
   const expectedGoals = Number((1.85 + ((seed % 22) / 10)).toFixed(1));
   const expectedCorners = Math.floor(8.0 + (seed % 5));
   const over25Prob = Math.min(85, Math.max(35, Math.floor(40 + (expectedGoals * 14))));
   const bttsProb = Math.min(82, Math.max(38, Math.floor(36 + (seed % 34))));
 
-  // High precision fair odds (with standard 1.05-1.07 bookmaker margin)
   const homeOdd = Number((1 / (homeWin / 100) * 1.06).toFixed(2));
   const drawOdd = Number((1 / (drawProb / 100) * 1.07).toFixed(2));
   const awayOdd = Number((1 / (awayWin / 100) * 1.06).toFixed(2));
@@ -153,7 +147,6 @@ export async function fetchFixturesByDate(dateStr: string, forceRefresh = false)
   }
 
   try {
-    // First try backend API proxy to avoid CORS and handle rate-limits smoothly
     const backendRes = await fetch(`/api/football/fixtures?date=${encodeURIComponent(dateStr)}`, {
       headers: { 'Accept': 'application/json' }
     });
@@ -166,7 +159,7 @@ export async function fetchFixturesByDate(dateStr: string, forceRefresh = false)
       }
     }
   } catch {
-    // continue to direct fetch fallback
+    // continua para o fallback
   }
 
   try {
@@ -195,7 +188,6 @@ export async function fetchFixturesByDate(dateStr: string, forceRefresh = false)
       return filtered;
     }
 
-    // If no league filter matched or response is empty, return fallback fixtures for a great experience
     const fallbackList = generateRichFallbackFixtures(dateStr);
     fixturesCache[dateStr] = { timestamp: now, data: fallbackList };
     return fallbackList;
@@ -225,7 +217,6 @@ export async function fetchHeadToHead(homeId: number, awayId: number): Promise<H
     h2hCache[cacheKey] = matches;
     return matches;
   } catch {
-    // Generate fallback H2H
     return [
       {
         fixture: { id: 991, timezone: 'America/Sao_Paulo', date: '2024-09-15T16:00:00-03:00', timestamp: 1726426800, status: { long: 'Match Finished', short: 'FT' } },
@@ -249,10 +240,8 @@ export async function fetchHeadToHead(homeId: number, awayId: number): Promise<H
   }
 }
 
-// Rich realistic fallback games generator
 export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
   const matchTemplates = [
-    // 1. Copa do Brasil (73)
     {
       id: 1101,
       league: { id: 73, name: 'Copa do Brasil', country: 'Brazil', logo: 'https://media.api-sports.io/football/leagues/73.png', season: 2025 },
@@ -271,8 +260,6 @@ export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
       status: { short: 'NS', long: 'Not Started' },
       goals: { home: null, away: null }
     },
-
-    // 2. Campeonato Argentino (128)
     {
       id: 1103,
       league: { id: 128, name: 'Camp. Argentino', country: 'Argentina', logo: 'https://media.api-sports.io/football/leagues/128.png', season: 2025 },
@@ -291,8 +278,6 @@ export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
       status: { short: 'NS', long: 'Not Started' },
       goals: { home: null, away: null }
     },
-
-    // 3. Copa Libertadores (13) & Sul-Americana (11)
     {
       id: 1105,
       league: { id: 13, name: 'Copa Libertadores', country: 'South America', logo: 'https://media.api-sports.io/football/leagues/13.png', season: 2025 },
@@ -311,8 +296,6 @@ export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
       status: { short: 'NS', long: 'Not Started' },
       goals: { home: null, away: null }
     },
-
-    // 4. Brasileirão Série A (71)
     {
       id: 1107,
       league: { id: 71, name: 'Brasileirão Série A', country: 'Brazil', logo: 'https://media.api-sports.io/football/leagues/71.png', season: 2025 },
@@ -340,8 +323,6 @@ export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
       status: { short: 'NS', long: 'Not Started' },
       goals: { home: null, away: null }
     },
-
-    // 5. Brasileirão Série B (72)
     {
       id: 1110,
       league: { id: 72, name: 'Brasileirão Série B', country: 'Brazil', logo: 'https://media.api-sports.io/football/leagues/72.png', season: 2025 },
@@ -351,8 +332,6 @@ export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
       status: { short: 'NS', long: 'Not Started' },
       goals: { home: null, away: null }
     },
-
-    // 6. UEFA Champions League (2) & Europa League (3)
     {
       id: 1111,
       league: { id: 2, name: 'Champions League', country: 'Europe', logo: 'https://media.api-sports.io/football/leagues/2.png', season: 2025 },
@@ -371,8 +350,6 @@ export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
       status: { short: '1H', long: 'First Half', elapsed: 38 },
       goals: { home: 1, away: 1 }
     },
-
-    // 7. Premier League (39) & La Liga (140)
     {
       id: 1113,
       league: { id: 39, name: 'Premier League', country: 'England', logo: 'https://media.api-sports.io/football/leagues/39.png', season: 2025 },
@@ -391,8 +368,6 @@ export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
       status: { short: 'NS', long: 'Not Started' },
       goals: { home: null, away: null }
     },
-
-    // 8. Serie A TIM (135) & Bundesliga (78)
     {
       id: 1115,
       league: { id: 135, name: 'Serie A TIM', country: 'Italy', logo: 'https://media.api-sports.io/football/leagues/135.png', season: 2025 },
@@ -411,8 +386,6 @@ export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
       status: { short: 'NS', long: 'Not Started' },
       goals: { home: null, away: null }
     },
-
-    // 9. Campeonatos Estaduais: Paulistão (475) & Carioca (476)
     {
       id: 1117,
       league: { id: 475, name: 'Paulistão', country: 'Brazil', logo: 'https://media.api-sports.io/football/leagues/475.png', season: 2025 },
@@ -431,8 +404,6 @@ export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
       status: { short: 'NS', long: 'Not Started' },
       goals: { home: null, away: null }
     },
-
-    // 10. Outros: MLS (253) & Saudi Pro League (307)
     {
       id: 1119,
       league: { id: 253, name: 'MLS', country: 'USA', logo: 'https://media.api-sports.io/football/leagues/253.png', season: 2025 },

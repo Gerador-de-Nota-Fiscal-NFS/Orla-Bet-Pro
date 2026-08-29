@@ -1,4 +1,4 @@
-import { MascotData } from '../types';
+import { MascotData } from '../../types';
 
 export const MASCOT_MAP: Record<string, MascotData> = {
   // Brasil - Série A e B

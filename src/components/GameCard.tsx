@@ -1,16 +1,16 @@
 import React from 'react';
-import { GameFixture, BetSelection } from '../types';
 import { Sparkles, BarChart2, PlusCircle } from 'lucide-react';
+import { GameFixture, BetSelection } from '../types';
 import { calculateProbabilities } from '../services/apiSports';
 
-interface GameCardProps {
+export interface GameCardProps {
   game: GameFixture;
   onOpenAnalysis: (game: GameFixture) => void;
   onAddToBetslip: (bet: BetSelection) => void;
   onAskAI: (game: GameFixture) => void;
 }
 
-function getDynamicMascot(teamName: string) {
+function getDynamicMascot(teamName: string): { emoji: string; bg: string } {
   const name = (teamName || 'Futebol').trim();
   const cleanName = name.replace(/[^a-zA-Z0-9]/g, '');
   const emoji = (cleanName.substring(0, 3) || 'FUT').toUpperCase();
@@ -32,9 +32,15 @@ export const GameCard: React.FC<GameCardProps> = ({
   game,
   onOpenAnalysis,
   onAddToBetslip,
-  onAskAI
+  onAskAI,
 }) => {
-  const probs = calculateProbabilities(game.fixture.id, game.teams.home.id, game.teams.away.id, []);
+  const probs = calculateProbabilities(
+    game.fixture.id,
+    game.teams.home.id,
+    game.teams.away.id,
+    []
+  );
+
   const homeMascot = getDynamicMascot(game.teams.home.name);
   const awayMascot = getDynamicMascot(game.teams.away.name);
 
@@ -47,52 +53,73 @@ export const GameCard: React.FC<GameCardProps> = ({
     odd: 1.85,
     prob: probs.confidenceScore,
     homeTeam: game.teams.home.name,
-    awayTeam: game.teams.away.name
+    awayTeam: game.teams.away.name,
   };
 
   return (
     <div className="bg-white rounded-3xl p-4 sm:p-5 shadow-xl border border-slate-100 flex flex-col justify-between hover:shadow-2xl transition duration-300">
+      {/* Header: League & Time */}
       <div className="flex justify-between items-center mb-3">
         <span className="text-[10px] font-black uppercase tracking-widest bg-cyan-50 text-cyan-700 px-2.5 py-0.5 rounded-full border border-cyan-100">
           {game.league.name}
         </span>
         <span className="text-[10px] font-bold text-slate-400">
-          {new Date(game.fixture.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          {new Date(game.fixture.date).toLocaleTimeString('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
         </span>
       </div>
 
+      {/* Teams Matchup */}
       <div className="grid grid-cols-7 items-center gap-2 my-2">
+        {/* Home Team */}
         <div className="col-span-3 text-center flex flex-col items-center">
-          <div 
+          <div
             className="w-10 h-10 rounded-xl flex items-center justify-center text-sm text-white font-black shadow-md mb-1.5"
             style={{ background: homeMascot.bg }}
           >
             {homeMascot.emoji}
           </div>
-          <span className="text-xs font-black text-slate-800 line-clamp-1">{game.teams.home.name}</span>
-          <span className="text-[10px] font-bold text-emerald-600">{probs.home}%</span>
+          <span className="text-xs font-black text-slate-800 line-clamp-1">
+            {game.teams.home.name}
+          </span>
+          <span className="text-[10px] font-bold text-emerald-600">
+            {probs.home}%
+          </span>
         </div>
 
+        {/* VS Divider */}
         <div className="col-span-1 text-center font-black text-slate-300 text-xs">
           VS
         </div>
 
+        {/* Away Team */}
         <div className="col-span-3 text-center flex flex-col items-center">
-          <div 
+          <div
             className="w-10 h-10 rounded-xl flex items-center justify-center text-sm text-white font-black shadow-md mb-1.5"
             style={{ background: awayMascot.bg }}
           >
             {awayMascot.emoji}
           </div>
-          <span className="text-xs font-black text-slate-800 line-clamp-1">{game.teams.away.name}</span>
-          <span className="text-[10px] font-bold text-cyan-600">{probs.away}%</span>
+          <span className="text-xs font-black text-slate-800 line-clamp-1">
+            {game.teams.away.name}
+          </span>
+          <span className="text-[10px] font-bold text-cyan-600">
+            {probs.away}%
+          </span>
         </div>
       </div>
 
+      {/* Algorithmic Suggestion */}
       <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 my-3 flex items-center justify-between">
         <div>
-          <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">Sugestão Orla Bet</span>
-          <span className="text-xs font-black text-slate-800">{probs.vipSuggestion}</span>
+          <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
+            Sugestão Orla Bet
+          </span>
+          <span className="text-xs font-black text-slate-800">
+            {probs.vipSuggestion}
+          </span>
         </div>
         <button
           onClick={() => onAddToBetslip(quickBet)}
@@ -104,6 +131,7 @@ export const GameCard: React.FC<GameCardProps> = ({
         </button>
       </div>
 
+      {/* Action Buttons */}
       <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
         <button
           onClick={() => onOpenAnalysis(game)}

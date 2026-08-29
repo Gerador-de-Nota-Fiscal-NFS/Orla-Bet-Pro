@@ -1,40 +1,4 @@
-export interface GameFixture {
-  fixture: {
-    id: number;
-    timezone: string;
-    date: string;
-    timestamp: number;
-    status: {
-      short: string;
-      long: string;
-    };
-  };
-  league: {
-    id: number;
-    name: string;
-    country: string;
-    logo: string;
-    season: number;
-  };
-  teams: {
-    home: {
-      id: number;
-      name: string;
-      logo: string;
-    };
-    away: {
-      id: number;
-      name: string;
-      logo: string;
-    };
-  };
-  goals: {
-    home: number | null;
-    away: number | null;
-  };
-}
-
-export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
+export function generateRichFallbackFixtures(dateStr: string) {
   const cleanDate = (dateStr || '2026-08-29').split('T')[0];
   const seed = parseInt(cleanDate.replace(/-/g, ''), 10) || 20260829;
   
@@ -59,7 +23,7 @@ export function generateRichFallbackFixtures(dateStr: string): GameFixture[] {
     { id: 2, name: 'Champions League', country: 'Europe', logo: 'https://media.api-sports.io/football/leagues/2.png', season: 2026 }
   ];
 
-  const fixtures: GameFixture[] = [];
+  const fixtures: Array<any> = [];
   
   for (let i = 0; i < 6; i++) {
     const homeIdx = (seed + i * 3) % poolTeams.length;

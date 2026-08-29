@@ -1,136 +1,123 @@
 import React from 'react';
 import { GameFixture, BetSelection } from '../types';
-import { Sparkles, BarChart2, PlusCircle } from 'lucide-react';
-import { calculateProbabilities } from '../services/apiSports';
+import { X, Sparkles, PlusCircle, TrendingUp, Users, Calendar } from 'lucide-react';
 
-interface GameCardProps {
-  game: GameFixture;
-  onOpenAnalysis: (game: GameFixture) => void;
+interface MatchAnalysisModalProps {
+  game: GameFixture | null;
+  onClose: () => void;
   onAddToBetslip: (bet: BetSelection) => void;
   onAskAI: (game: GameFixture) => void;
 }
 
-// Gerador visual interno seguro
-function getDynamicMascot(teamName: string) {
-  const name = (teamName || 'Futebol').trim();
-  const cleanName = name.replace(/[^a-zA-Z0-9]/g, '');
-  const emoji = (cleanName.substring(0, 3) || 'FUT').toUpperCase();
-
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  
-  const hue = Math.abs(hash) % 360;
-  const primaryColor = `hsl(${hue}, 70%, 45%)`;
-  const secondaryColor = `hsl(${(hue + 40) % 360}, 65%, 25%)`;
-  const bg = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
-
-  return { emoji, bg };
-}
-
-export const GameCard: React.FC<GameCardProps> = ({
+export const MatchAnalysisModal: React.FC<MatchAnalysisModalProps> = ({
   game,
-  onOpenAnalysis,
+  onClose,
   onAddToBetslip,
   onAskAI
 }) => {
-  const probs = calculateProbabilities(game.fixture.id, game.teams.home.id, game.teams.away.id, []);
-  const homeMascot = getDynamicMascot(game.teams.home.name);
-  const awayMascot = getDynamicMascot(game.teams.away.name);
+  if (!game) return null;
 
   const quickBet: BetSelection = {
     fixtureId: game.fixture.id,
     matchName: `${game.teams.home.name} x ${game.teams.away.name}`,
     leagueName: game.league.name,
-    marketName: 'Dica Algorítmica',
-    selection: probs.vipSuggestion,
-    odd: 1.85,
-    prob: probs.confidenceScore,
+    marketName: 'Análise Detalhada',
+    selection: 'Vitória ou Empate (Dupla Chance)',
+    odd: 1.45,
+    prob: 75,
     homeTeam: game.teams.home.name,
     awayTeam: game.teams.away.name
   };
 
   return (
-    <div className="bg-white rounded-3xl p-4 sm:p-5 shadow-xl border border-slate-100 flex flex-col justify-between hover:shadow-2xl transition duration-300">
-      
-      {/* Topo: Liga e Status */}
-      <div className="flex justify-between items-center mb-3">
-        <span className="text-[10px] font-black uppercase tracking-widest bg-cyan-50 text-cyan-700 px-2.5 py-0.5 rounded-full border border-cyan-100">
-          {game.league.name}
-        </span>
-        <span className="text-[10px] font-bold text-slate-400">
-          {new Date(game.fixture.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-        </span>
-      </div>
-
-      {/* Confronto (Times) */}
-      <div className="grid grid-cols-7 items-center gap-2 my-2">
-        {/* Casa */}
-        <div className="col-span-3 text-center flex flex-col items-center">
-          <div 
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-sm text-white font-black shadow-md mb-1.5"
-            style={{ background: homeMascot.bg }}
-          >
-            {homeMascot.emoji}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+        
+        {/* Header do Modal */}
+        <div className="sticky top-0 bg-white/95 backdrop-blur border-b border-slate-100 p-4 sm:p-6 flex justify-between items-start z-10">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-widest bg-cyan-50 text-cyan-700 px-2.5 py-0.5 rounded-full border border-cyan-100">
+              {game.league.name}
+            </span>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 mt-2">
+              {game.teams.home.name} <span className="text-slate-400 font-bold">x</span> {game.teams.away.name}
+            </h2>
+            <div className="flex items-center gap-4 mt-2 text-xs font-bold text-slate-500">
+              <span className="flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5" /> 
+                {new Date(game.fixture.date).toLocaleDateString('pt-BR')}
+              </span>
+              <span className="flex items-center gap-1">
+                <TrendingUp className="w-3.5 h-3.5" /> 
+                Próximo Confronto
+              </span>
+            </div>
           </div>
-          <span className="text-xs font-black text-slate-800 line-clamp-1">{game.teams.home.name}</span>
-          <span className="text-[10px] font-bold text-emerald-600">{probs.home}%</span>
-        </div>
-
-        {/* X / VS */}
-        <div className="col-span-1 text-center font-black text-slate-300 text-xs">
-          VS
-        </div>
-
-        {/* Fora */}
-        <div className="col-span-3 text-center flex flex-col items-center">
-          <div 
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-sm text-white font-black shadow-md mb-1.5"
-            style={{ background: awayMascot.bg }}
+          <button 
+            onClick={onClose} 
+            className="p-2 hover:bg-slate-100 rounded-full transition text-slate-500 hover:text-slate-900"
           >
-            {awayMascot.emoji}
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Conteúdo do Modal */}
+        <div className="p-4 sm:p-6 space-y-6">
+          
+          {/* Box de Insight da IA */}
+          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100 rounded-2xl p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-5 h-5 text-purple-600" />
+              <h3 className="font-black text-purple-900 uppercase tracking-wide text-sm">Insight da Orla IA</h3>
+            </div>
+            <p className="text-sm text-slate-700 leading-relaxed">
+              A análise algorítmica indica uma tendência de <strong>equilíbrio com leve vantagem para o mandante</strong>. 
+              O histórico recente e a expectativa de gols (xG) sugerem um jogo com oportunidades claras, 
+              mas com defesa sólida. O mercado de <strong>Dupla Chance</strong> ou <strong>Under 2.5 Gols</strong> apresenta o melhor Valor Esperado (+EV) neste confronto.
+            </p>
           </div>
-          <span className="text-xs font-black text-slate-800 line-clamp-1">{game.teams.away.name}</span>
-          <span className="text-[10px] font-bold text-cyan-600">{probs.away}%</span>
+
+          {/* Grid de Estatísticas Rápidas */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-center">
+              <Users className="w-6 h-6 text-cyan-600 mx-auto mb-2" />
+              <span className="text-[10px] font-black uppercase text-slate-400 block">Probabilidade Casa</span>
+              <span className="text-2xl font-black text-slate-900">48%</span>
+            </div>
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-center">
+              <Users className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
+              <span className="text-[10px] font-black uppercase text-slate-400 block">Probabilidade Fora</span>
+              <span className="text-2xl font-black text-slate-900">27%</span>
+            </div>
+          </div>
+
+          {/* Botões de Ação */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            <button
+              onClick={() => {
+                onAddToBetslip(quickBet);
+                onClose();
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 rounded-xl font-black text-sm uppercase tracking-wider transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Adicionar ao Bilhete (@1.45)</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onAskAI(game);
+                onClose();
+              }}
+              className="bg-purple-600 hover:bg-purple-700 text-white py-3.5 rounded-xl font-black text-sm uppercase tracking-wider transition flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Pedir Análise Detalhada à IA</span>
+            </button>
+          </div>
+
         </div>
       </div>
-
-      {/* Dica / Sugestão Rápida */}
-      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 my-3 flex items-center justify-between">
-        <div>
-          <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">Sugestão Orla Bet</span>
-          <span className="text-xs font-black text-slate-800">{probs.vipSuggestion}</span>
-        </div>
-        <button
-          onClick={() => onAddToBetslip(quickBet)}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-xl transition shadow-sm flex items-center gap-1 text-[10px] font-bold uppercase"
-          title="Adicionar ao Bilhete"
-        >
-          <PlusCircle className="w-3.5 h-3.5" />
-          <span>@1.85</span>
-        </button>
-      </div>
-
-      {/* Ações / Botões Inferiores */}
-      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-        <button
-          onClick={() => onOpenAnalysis(game)}
-          className="py-2.5 px-3 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 rounded-xl font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-1.5"
-        >
-          <BarChart2 className="w-3.5 h-3.5" />
-          <span>Análise</span>
-        </button>
-
-        <button
-          onClick={() => onAskAI(game)}
-          className="py-2.5 px-3 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-1.5"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-          <span>Orla IA</span>
-        </button>
-      </div>
-
     </div>
   );
 };

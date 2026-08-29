@@ -33,12 +33,10 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  // Navigation & View State
   const [currentView, setCurrentView] = useState<'app' | 'admin'>('app');
   const [currentUser, setCurrentUser] = useState<Subscriber | null>(null);
   const [trialTimeLeft, setTrialTimeLeft] = useState<number>(0);
   
-  // Games & Filter State
   const [games, setGames] = useState<GameFixture[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -46,7 +44,6 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [onlyLive, setOnlyLive] = useState<boolean>(false);
 
-  // Modals & Drawers State
   const [selectedGameForModal, setSelectedGameForModal] = useState<GameFixture | null>(null);
   const [isBetslipOpen, setIsBetslipOpen] = useState<boolean>(false);
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
@@ -56,10 +53,7 @@ export default function App() {
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
   const [chatGameContext, setChatGameContext] = useState<GameFixture | undefined>(undefined);
 
-  // Betslip Store
   const [betslip, setBetslip] = useState<BetSelection[]>([]);
-
-  // Toast Notifications
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -74,7 +68,6 @@ export default function App() {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  // Initial user auth check
   useEffect(() => {
     const stored = getStoredCurrentUser();
     if (stored) {
@@ -86,14 +79,11 @@ export default function App() {
     }
   }, []);
 
-  // Trial countdown timer tick
   useEffect(() => {
     if (!currentUser || currentUser.status !== 'teste') return;
-
     const interval = setInterval(() => {
       const remaining = getRemainingTrialSeconds(currentUser);
       setTrialTimeLeft(remaining);
-
       if (remaining <= 0) {
         const updated = checkAndUpdateUserTrial(currentUser);
         setCurrentUser(updated);
@@ -101,16 +91,21 @@ export default function App() {
         clearInterval(interval);
       }
     }, 1000);
-
     return () => clearInterval(interval);
   }, [currentUser]);
 
-  // Fetch Games on Date Change
   const loadGames = async (dateStr: string) => {
     setLoading(true);
     try {
       const fetched = await fetchDailyGames(dateStr);
-      setGames(fetched);
+      // FILTRO DE SEGURANÇA: remove jogos com dados incompletos
+      const validGames = fetched.filter(g => 
+        g?.fixture?.id && 
+        g?.teams?.home?.name && 
+        g?.teams?.away?.name &&
+        g?.league?.name
+      );
+      setGames(validGames);
     } catch (err: any) {
       showToast('Aviso: exibindo jogos em modo de resiliência esportiva.', 'info');
     } finally {
@@ -122,30 +117,34 @@ export default function App() {
     loadGames(selectedDate);
   }, [selectedDate]);
 
-  // Live match counter
+  // ✅ CORREÇÃO: optional chaining em status.short
   const liveMatchesCount = useMemo(() => {
-    return games.filter(g => ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(g.fixture.status.short)).length;
+    return games.filter(g => 
+      ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(g.fixture.status?.short || '')
+    ).length;
   }, [games]);
 
-  // Filtered Games Logic
   const filteredGames = useMemo(() => {
     return games.filter(game => {
-      if (selectedLeague !== 'all' && String(game.league.id) !== selectedLeague) return false;
-      if (onlyLive && !['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(game.fixture.status.short)) return false;
+      if (selectedLeague !== 'all' && String(game.league?.id) !== selectedLeague) return false;
+      
+      // ✅ CORREÇÃO: optional chaining
+      if (onlyLive) {
+        const isLive = ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(game.fixture.status?.short || '');
+        if (!isLive) return false;
+      }
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const homeName = game.teams.home.name.toLowerCase();
-        const awayName = game.teams.away.name.toLowerCase();
-        const leagueName = game.league.name.toLowerCase();
+        const homeName = game.teams?.home?.name?.toLowerCase() || '';
+        const awayName = game.teams?.away?.name?.toLowerCase() || '';
+        const leagueName = game.league?.name?.toLowerCase() || '';
         if (!homeName.includes(q) && !awayName.includes(q) && !leagueName.includes(q)) return false;
       }
-
       return true;
     });
   }, [games, selectedLeague, onlyLive, searchQuery]);
 
-  // Betslip Management
   const handleToggleBet = (bet: BetSelection) => {
     setBetslip(prev => {
       const exists = prev.some(b => b.fixtureId === bet.fixtureId && b.selection === bet.selection);
@@ -391,8 +390,8 @@ export default function App() {
                       key={game.fixture.id}
                       game={game}
                       onOpenAnalysis={(g) => setSelectedGameForModal(g)}
-                      onToggleBet={handleToggleBet}
-                      isBetSelected={isBetSelected}
+                      onAddToBetslip={handleToggleBet}
+                      onAskAI={handleAskAI}
                     />
                   ))}
                 </div>
@@ -418,7 +417,7 @@ export default function App() {
       <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-400 mt-12">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-lg">⚽</span>
+            <span className="text-lg"></span>
             <span className="font-black text-slate-700 uppercase tracking-tight">Orla Bet Pro</span>
             <span className="text-[10px] text-slate-400">© {new Date().getFullYear()} Todos os direitos reservados.</span>
             <button onClick={() => setIsSecretAdminOpen(true)} className="text-slate-300 hover:text-red-500 transition cursor-pointer p-1 ml-2" title="Acesso Restrito">🔒</button>

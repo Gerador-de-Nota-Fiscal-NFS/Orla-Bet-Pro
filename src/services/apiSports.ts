@@ -1,5 +1,6 @@
-export function generateRichFallbackFixtures(dateStr: string) {
-  const seed = parseInt(dateStr.replace(/-/g, ''), 10) || 20260829;
+export function generateRichFallbackFixtures(dateStr: string): Array<any> {
+  const cleanDate = (dateStr || '2026-08-29').split('T')[0];
+  const seed = parseInt(cleanDate.replace(/-/g, ''), 10) || 20260829;
   
   const poolTeams = [
     { id: 127, name: 'Flamengo', logo: 'https://media.api-sports.io/football/teams/127.png' },
@@ -22,7 +23,7 @@ export function generateRichFallbackFixtures(dateStr: string) {
     { id: 2, name: 'Champions League', country: 'Europe', logo: 'https://media.api-sports.io/football/leagues/2.png', season: 2026 }
   ];
 
-  const fixtures: any[] = [];
+  const fixtures: Array<any> = [];
   
   for (let i = 0; i < 6; i++) {
     const homeIdx = (seed + i * 3) % poolTeams.length;
@@ -37,8 +38,8 @@ export function generateRichFallbackFixtures(dateStr: string) {
       fixture: {
         id: 70000 + (seed % 10000) + i,
         timezone: 'America/Sao_Paulo',
-        date: `${dateStr}T${timeStr}:00-03:00`,
-        timestamp: Math.floor(new Date(`${dateStr}T${timeStr}:00-03:00`).getTime() / 1000),
+        date: `${cleanDate}T${timeStr}:00-03:00`,
+        timestamp: Math.floor(new Date(`${cleanDate}T${timeStr}:00-03:00`).getTime() / 1000),
         status: { short: 'NS', long: 'Not Started' }
       },
       league,

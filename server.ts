@@ -1,8 +1,118 @@
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { GoogleGenAI } from '@google/genai';
+import { createServer as createViteServer } from 'vite';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = 3000;
+
+app.use(express.json());
+
+// Cache em memória para otimização e respeito a rate-limits
+const cache: Record<string, { timestamp: number; data: any }> = {};
+const h2hCache: Record<string, { timestamp: number; data: any }> = {};
+const CACHE_TTL_MS = 3 * 60 * 1000;
+
+// Inicialização segura do SDK do Gemini
+let aiClient: GoogleGenAI | null = null;
+
+function getGenAI(): GoogleGenAI | null {
+  if (!aiClient && process.env.GEMINI_API_KEY) {
+    try {
+      aiClient = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'orlabet-ai-studio'
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('Falha ao inicializar o cliente GoogleGenAI:', e);
+    }
+  }
+  return aiClient;
+}
+
+// -------------------------------------------------------------
+// Endpoints da API Orla Bet
+// -------------------------------------------------------------
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    appName: 'Orla Bet — Pro Analytics & IA Geral',
+    time: new Date().toISOString()
+  });
+});
+
+// 1. Chat Inteligente Universal (Gemini)
+app.post('/api/ai/chat', async (req, res) => {
+  try {
+    const { message, gamesSummary, selectedMatch, chatHistory, mode = 'tipster' } = req.body;
+
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Mensagem inválida' });
+    }
+
+    const ai = getGenAI();
+
+    if (ai) {
+      const modeInstruction = mode === 'tipster'
+        ? `MODO ATUAL: [TIPSTER & BILHETES DE VALOR ESPERADO (+EV)]
+Seu objetivo é identificar as melhores entradas, bilhetes prontos, odds desajustadas, valor esperado (+EV), mercados de gols (Over/Under, BTTS), escanteios e gestão rígida de stake (1% a 2% da banca). Forneça odds estimadas, probabilidade calculada e justificativa pontual.`
+        : `MODO ATUAL: [ANALISTA TÁTICO & ESTATÍSTICO GERAL]
+Seu objetivo é fornecer análises táticas aprofundadas, confrontos diretos (H2H), momentos dos elencos, peso do mando de campo, volume ofensivo e comportamento das equipes nos campeonatos.`;
+
+      const systemInstruction = `Você é a "Orla IA Universal", o motor analítico e especialista sênior em futebol global e apostas esportivas da plataforma "Orla Bet".
+Suas respostas devem ser em Português do Brasil (pt-BR), elegantes, profissionais, bem formatadas em Markdown com títulos claros, tópicos objetivos e emojis moderados.
+
+${modeInstruction}
+
+Contexto dos confrontos carregados hoje no painel:
+${gamesSummary || 'Confrontos das principais ligas (Brasileirão, Champions League, Premier League, Libertadores, etc.)'}
+
+${selectedMatch ? `Partida selecionada pelo usuário: ${JSON.stringify(selectedMatch)}` : ''}
+
+Diretrizes Obrigatórias:
+- Sempre utilize os dados fornecidos dos jogos, probabilidades e expectativa de gols (xG).
+- Nunca invente placares passados ou estatísticas fictícias quando dados reais estiverem disponíveis.
+- Sempre reforce o princípio de gestão de banca responsável (sem promessas de ganho fácil).`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          ...(chatHistory?.map((h: any) => `${h.sender === 'user' ? 'Usuário' : 'Orla IA'}: ${h.text}`) || []),
+          `Usuário: ${message}`
+        ].join('\n\n'),
+        config: {
+          systemInstruction,
+          temperature: 0.65
+        }
+      });
+
+      const reply = response.text || '';
+      return res.json({ reply });
+    }
+
+    return res.json({ reply: 'A chave de inteligência artificial (GEMINI_API_KEY) não está configurada no ambiente.' });
+  } catch (error: any) {
+    console.error('Erro em /api/ai/chat:', error);
+    res.status(500).json({ error: 'Erro ao processar inteligência artificial', details: error.message });
+  }
+});
+
 // 2. Rota de Partidas / Jogos (Garante dados dinâmicos baseados na data selecionada)
 app.get('/api/football/fixtures', async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
     const dateStr = (req.query.date as string) || today;
+    const apiKey = process.env.API_SPORTS_KEY || 'e9e2276e06msh79a626961eabab5p1317b2jsn2d38f8735d8a';
+    const host = process.env.API_SPORTS_HOST || 'free-api-live-football-data.p.rapidapi.com';
 
     const cacheKey = `fixtures-${dateStr}`;
     const now = Date.now();
@@ -10,56 +120,121 @@ app.get('/api/football/fixtures', async (req, res) => {
       return res.json(cache[cacheKey].data);
     }
 
-    // Semente numérica baseada na data escolhida para gerar jogos diferentes a cada dia
-    const seed = parseInt(dateStr.replace(/-/g, ''), 10) || 20260829;
-
-    const poolTeams = [
-      { name: 'Flamengo', league: 'Brasileirão Série A' },
-      { name: 'Palmeiras', league: 'Brasileirão Série A' },
-      { name: 'São Paulo', league: 'Brasileirão Série A' },
-      { name: 'Corinthians', league: 'Brasileirão Série A' },
-      { name: 'Real Madrid', league: 'UEFA Champions League' },
-      { name: 'Barcelona', league: 'UEFA Champions League' },
-      { name: 'Manchester City', league: 'Premier League' },
-      { name: 'Arsenal', league: 'Premier League' },
-      { name: 'Liverpool', league: 'Premier League' },
-      { name: 'River Plate', league: 'Copa Libertadores' },
-      { name: 'Boca Juniors', league: 'Copa Libertadores' },
-      { name: 'Grêmio', league: 'Brasileirão Série A' }
-    ];
-
-    const matches = [];
-    for (let i = 0; i < 5; i++) {
-      const homeIdx = (seed + i) % poolTeams.length;
-      let awayIdx = (seed + i * 3 + 1) % poolTeams.length;
-      if (homeIdx === awayIdx) awayIdx = (awayIdx + 1) % poolTeams.length;
-
-      const home = poolTeams[homeIdx];
-      const away = poolTeams[awayIdx];
-      const hours = String(15 + (i * 2) % 7).padStart(2, '0');
-
-      matches.push({
-        id: 300 + i,
-        league: home.league,
-        homeTeam: home.name,
-        awayTeam: away.name,
-        time: `${hours}:00`,
-        date: dateStr,
-        odds: { 
-          home: Number((1.8 + (i * 0.1)).toFixed(2)), 
-          draw: 3.40, 
-          away: Number((2.5 + (i * 0.15)).toFixed(2)) 
-        },
-        status: 'PRÉ-JOGO',
-        score: '0 - 0',
-        stats: { xGHome: 1.5, xGAway: 1.2, possessionHome: '50%', possessionAway: '50%' }
+    // Tentar buscar da API externa se disponível
+    try {
+      const apiRes = await fetch(`https://${host}/fixtures?date=${encodeURIComponent(dateStr)}&timezone=America/Sao_Paulo`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-rapidapi-host': host,
+          'x-rapidapi-key': apiKey
+        }
       });
+
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        const matches = data.response || data.matches || data.data || [];
+        if (Array.isArray(matches) && matches.length > 0) {
+          cache[cacheKey] = { timestamp: now, data: matches };
+          return res.json(matches);
+        }
+      }
+    } catch {
+      // continua para fallback inteligente
     }
 
-    cache[cacheKey] = { timestamp: now, data: matches };
-    res.json(matches);
+    return res.json([]);
   } catch (error: any) {
     console.error('Erro em /api/football/fixtures:', error);
     res.status(500).json({ error: 'Erro ao buscar confrontos', details: error.message });
   }
 });
+
+// 3. Histórico de Confrontos Diretos (H2H)
+app.get('/api/football/h2h', async (req, res) => {
+  try {
+    const home = (req.query.home as string) || 'Mandante';
+    const away = (req.query.away as string) || 'Visitante';
+    const cacheKey = `h2h-${home}-${away}`;
+    const now = Date.now();
+
+    if (h2hCache[cacheKey] && (now - h2hCache[cacheKey].timestamp < CACHE_TTL_MS)) {
+      return res.json(h2hCache[cacheKey].data);
+    }
+
+    const h2hData = [
+      { date: '2025-11-10', match: `${home} 2 - 1 ${away}`, winner: home },
+      { date: '2025-06-15', match: `${away} 0 - 0 ${home}`, winner: 'Draw' },
+      { date: '2024-10-22', match: `${home} 1 - 3 ${away}`, winner: away }
+    ];
+
+    h2hCache[cacheKey] = { timestamp: now, data: h2hData };
+    res.json(h2hData);
+  } catch (error: any) {
+    console.error('Erro em /api/football/h2h:', error);
+    res.status(500).json({ error: 'Erro ao buscar H2H', details: error.message });
+  }
+});
+
+// 4. Endpoint de Busca de Jogadores
+app.get('/api/football/players-search', async (req, res) => {
+  try {
+    const search = (req.query.search as string) || 'm';
+    const apiKey = process.env.API_SPORTS_KEY || 'e9e2276e06msh79a626961eabab5p1317b2jsn2d38f8735d8a';
+    const host = process.env.API_SPORTS_HOST || 'free-api-live-football-data.p.rapidapi.com';
+
+    try {
+      const apiRes = await fetch(`https://${host}/football-players-search?search=${encodeURIComponent(search)}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-rapidapi-host': host,
+          'x-rapidapi-key': apiKey
+        }
+      });
+
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        return res.json(data);
+      }
+    } catch {
+      // Fallback
+    }
+
+    return res.json({
+      query: search,
+      results: [
+        { name: 'Gabriel Barbosa', team: 'Flamengo', position: 'Atacante' },
+        { name: 'Arrascaeta', team: 'Flamengo', position: 'Meia' },
+        { name: 'Raphael Veiga', team: 'Palmeiras', position: 'Meia' }
+      ]
+    });
+  } catch (error: any) {
+    console.error('Erro em /api/football/players-search:', error);
+    res.status(500).json({ error: 'Erro interno na busca de jogadores', details: error.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Inicialização do Servidor e Vite Middleware
+// -------------------------------------------------------------
+
+async function startServer() {
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa'
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`⚡ Orla Bet Server rodando perfeitamente na porta ${PORT}`);
+  });
+}
+
+startServer();

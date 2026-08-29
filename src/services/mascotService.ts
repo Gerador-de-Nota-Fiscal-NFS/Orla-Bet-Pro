@@ -115,7 +115,6 @@ export const MASCOT_MAP: Record<string, MascotData> = {
   }
 };
 
-const FALLBACK_POOL = ['FUT', 'BOL', 'GOL', 'CLUB', 'TEAM', 'PRO'];
 const GRADIENT_PALETTES = [
   { bg: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)', primary: '#06b6d4', secondary: '#3b82f6' },
   { bg: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', primary: '#10b981', secondary: '#059669' },

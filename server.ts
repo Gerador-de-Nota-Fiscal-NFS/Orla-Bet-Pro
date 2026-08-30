@@ -18,6 +18,39 @@ type CacheEntry<T> = {
 
 type UnknownRecord = Record<string, unknown>;
 
+type NormalizedMatch = {
+  fixture: {
+    id: number;
+    date: string;
+    timestamp: number | null;
+    status: {
+      long: string;
+      short: string;
+      elapsed: number | null;
+    };
+  };
+  league: {
+    id?: number;
+    name: string;
+  };
+  teams: {
+    home: {
+      id?: number;
+      name: string;
+    };
+    away: {
+      id?: number;
+      name: string;
+    };
+  };
+  goals: {
+    home: number | null;
+    away: number | null;
+  };
+  source: string;
+  lastUpdatedAt: string;
+};
+
 // -------------------------------------------------------------
 // Aplicação
 // -------------------------------------------------------------
@@ -36,23 +69,33 @@ app.use(
 // Configurações
 // -------------------------------------------------------------
 
-const PORT = Number.parseInt(process.env.PORT || '3000', 10);
+const PORT = Number.parseInt(
+  process.env.PORT || '3000',
+  10
+);
 
-const FOOTBALL_TIMEZONE = 'America/Sao_Paulo';
+const FOOTBALL_DATA_MATCHES_URL =
+  'https://api.football-data.org/v4/matches';
 
-const FOOTBALL_CACHE_TTL_MS = 30 * 1000;
+const FOOTBALL_TIMEZONE =
+  'America/Sao_Paulo';
 
-const PLAYERS_CACHE_TTL_MS = 10 * 60 * 1000;
+const FOOTBALL_CACHE_TTL_MS =
+  30 * 1000;
 
-const REQUEST_TIMEOUT_MS = 15 * 1000;
+const PLAYERS_CACHE_TTL_MS =
+  10 * 60 * 1000;
+
+const REQUEST_TIMEOUT_MS =
+  15 * 1000;
 
 // -------------------------------------------------------------
-// Cache em memória
+// Cache
 // -------------------------------------------------------------
 
 const fixturesCache: Record<
   string,
-  CacheEntry<unknown[]>
+  CacheEntry<NormalizedMatch[]>
 > = {};
 
 const playersCache: Record<
@@ -71,7 +114,8 @@ function getGenAI(): GoogleGenAI | null {
     return aiClient;
   }
 
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  const apiKey =
+    process.env.GEMINI_API_KEY?.trim();
 
   if (!apiKey) {
     return null;
@@ -90,7 +134,7 @@ function getGenAI(): GoogleGenAI | null {
     return aiClient;
   } catch (error) {
     console.error(
-      'Falha ao inicializar o cliente Gemini:',
+      'Falha ao inicializar o Gemini:',
       getErrorMessage(error)
     );
 
@@ -110,7 +154,9 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function getQueryString(value: unknown): string | undefined {
+function getQueryString(
+  value: unknown
+): string | undefined {
   if (typeof value !== 'string') {
     return undefined;
   }
@@ -141,20 +187,11 @@ function setNoStore(res: Response): void {
   res.setHeader('Expires', '0');
 }
 
-function sendApiError(
-  res: Response,
-  statusCode: number,
-  message: string
-): Response {
-  setNoStore(res);
-
-  return res.status(statusCode).json({
-    error: message
-  });
-}
-
-function isValidDateString(value: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+function isValidDateString(
+  value: string
+): boolean {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
 
   if (!match) {
     return false;
@@ -180,12 +217,13 @@ function isValidDateString(value: string): boolean {
 }
 
 function getBrazilDate(): string {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: FOOTBALL_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(new Date());
+  const parts =
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: FOOTBALL_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(new Date());
 
   const year = parts.find(
     (part) => part.type === 'year'
@@ -201,17 +239,21 @@ function getBrazilDate(): string {
 
   if (!year || !month || !day) {
     throw new Error(
-      'Não foi possível calcular a data no fuso configurado.'
+      'Não foi possível obter a data atual.'
     );
   }
 
   return `\({year}-\){month}-${day}`;
 }
 
-function getRequestedDate(req: Request): string {
-  const queryDate = getQueryString(req.query.date);
+function getRequestedDate(
+  req: Request
+): string {
+  const requestedDate =
+    getQueryString(req.query.date);
 
-  const date = queryDate || getBrazilDate();
+  const date =
+    requestedDate || getBrazilDate();
 
   if (!isValidDateString(date)) {
     throw new Error(
@@ -222,71 +264,25 @@ function getRequestedDate(req: Request): string {
   return date;
 }
 
-function getProviderConfig(): {
-  apiKey: string;
-  host: string;
-} {
-  const apiKey = process.env.API_SPORTS_KEY?.trim();
+function getFootballToken(): string {
+  const token =
+    process.env.FOOTBALL_DATA_TOKEN?.trim();
 
-  const configuredHost = process.env.API_SPORTS_HOST?.trim();
-
-  if (!apiKey) {
+  if (!token) {
     throw new Error(
-      'API_SPORTS_KEY não configurada.'
+      'FOOTBALL_DATA_TOKEN não configurado.'
     );
   }
 
-  if (!configuredHost) {
-    throw new Error(
-      'API_SPORTS_HOST não configurada.'
-    );
-  }
-
-  const host = configuredHost
-    .replace(/^https?:\/\//i, '')
-    .replace(/\/+$/, '');
-
-  if (!host || host.includes(' ')) {
-    throw new Error(
-      'API_SPORTS_HOST inválido.'
-    );
-  }
-
-  return {
-    apiKey,
-    host
-  };
-}
-
-function buildProviderUrl(
-  host: string,
-  endpoint: string,
-  params: Record<string, string>
-): string {
-  const query = new URLSearchParams(params);
-
-  // O protocolo é montado sem deixar um endereço externo fixo
-  // no código-fonte.
-  const protocol = ['h', 't', 't', 'p', 's', ':'].join('');
-
-  const baseUrl = [
-    protocol,
-    '',
-    host
-  ].join('/');
-
-  const url = new URL(endpoint, `${baseUrl}/`);
-
-  url.search = query.toString();
-
-  return url.toString();
+  return token;
 }
 
 async function fetchWithTimeout(
   url: string,
   init: RequestInit = {}
 ): Promise<globalThis.Response> {
-  const controller = new AbortController();
+  const controller =
+    new AbortController();
 
   const timeout = setTimeout(() => {
     controller.abort();
@@ -302,7 +298,7 @@ async function fetchWithTimeout(
   }
 }
 
-async function readProviderJson(
+async function readJson(
   response: globalThis.Response
 ): Promise<unknown> {
   const text = await response.text();
@@ -315,65 +311,239 @@ async function readProviderJson(
     return JSON.parse(text);
   } catch {
     throw new Error(
-      'A API externa retornou conteúdo inválido.'
+      'A API retornou uma resposta inválida.'
     );
   }
 }
 
-function extractArrayFromResponse(
-  data: unknown
-): unknown[] | null {
-  if (!data || typeof data !== 'object') {
+function getNumberOrNull(
+  value: unknown
+): number | null {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    ? value
+    : null;
+}
+
+function getString(
+  value: unknown,
+  fallback = ''
+): string {
+  return typeof value === 'string'
+    ? value
+    : fallback;
+}
+
+function mapStatus(
+  statusValue: unknown
+): {
+  long: string;
+  short: string;
+} {
+  const status =
+    getString(statusValue)
+      .trim()
+      .toUpperCase();
+
+  switch (status) {
+    case 'SCHEDULED':
+    case 'TIMED':
+    case 'AGENDADA':
+      return {
+        long: 'Não iniciado',
+        short: 'NS'
+      };
+
+    case 'LIVE':
+    case 'IN_PLAY':
+    case 'EM JOGO':
+    case 'AO VIVO':
+      return {
+        long: 'Ao vivo',
+        short: 'LIVE'
+      };
+
+    case 'PAUSED':
+    case 'PAUSADA':
+      return {
+        long: 'Intervalo',
+        short: 'HT'
+      };
+
+    case 'FINISHED':
+    case 'FINALIZADA':
+      return {
+        long: 'Encerrado',
+        short: 'FT'
+      };
+
+    case 'POSTPONED':
+    case 'ADIADA':
+      return {
+        long: 'Adiado',
+        short: 'PST'
+      };
+
+    case 'SUSPENDED':
+    case 'SUSPENSA':
+      return {
+        long: 'Suspenso',
+        short: 'SUSP'
+      };
+
+    case 'CANCELLED':
+    case 'CANCELADA':
+      return {
+        long: 'Cancelado',
+        short: 'CANC'
+      };
+
+    default:
+      return {
+        long: status || 'Status não informado',
+        short: status || 'UNK'
+      };
+  }
+}
+
+function normalizeMatch(
+  value: unknown
+): NormalizedMatch | null {
+  if (
+    !value ||
+    typeof value !== 'object'
+  ) {
     return null;
   }
 
-  const record = data as UnknownRecord;
+  const match =
+    value as UnknownRecord;
 
-  const responseField = record.response;
-  const matchesField = record.matches;
-  const dataField = record.data;
+  const homeTeam =
+    match.homeTeam &&
+    typeof match.homeTeam === 'object'
+      ? match.homeTeam as UnknownRecord
+      : {};
 
-  if (Array.isArray(responseField)) {
-    return responseField;
-  }
+  const awayTeam =
+    match.awayTeam &&
+    typeof match.awayTeam === 'object'
+      ? match.awayTeam as UnknownRecord
+      : {};
 
-  if (Array.isArray(matchesField)) {
-    return matchesField;
-  }
+  const competition =
+    match.competition &&
+    typeof match.competition === 'object'
+      ? match.competition as UnknownRecord
+      : {};
 
-  if (Array.isArray(dataField)) {
-    return dataField;
-  }
+  const score =
+    match.score &&
+    typeof match.score === 'object'
+      ? match.score as UnknownRecord
+      : {};
+
+  const fullTime =
+    score.fullTime &&
+    typeof score.fullTime === 'object'
+      ? score.fullTime as UnknownRecord
+      : {};
+
+  const id =
+    getNumberOrNull(match.id);
+
+  const date =
+    getString(match.utcDate);
+
+  const homeName =
+    getString(homeTeam.name);
+
+  const awayName =
+    getString(awayTeam.name);
 
   if (
-    responseField &&
-    typeof responseField === 'object'
+    id === null ||
+    !date ||
+    !homeName ||
+    !awayName
   ) {
-    const responseRecord =
-      responseField as UnknownRecord;
-
-    if (Array.isArray(responseRecord.fixtures)) {
-      return responseRecord.fixtures;
-    }
+    return null;
   }
 
+  const mappedStatus =
+    mapStatus(match.status);
+
+  const minute =
+    getNumberOrNull(match.minute);
+
+  const timestamp =
+    Date.parse(date);
+
+  return {
+    fixture: {
+      id,
+      date,
+      timestamp: Number.isNaN(timestamp)
+        ? null
+        : timestamp,
+      status: {
+        long: mappedStatus.long,
+        short: mappedStatus.short,
+        elapsed: minute
+      }
+    },
+    league: {
+      id: getNumberOrNull(
+        competition.id
+      ) ?? undefined,
+      name: getString(
+        competition.name,
+        'Competição não informada'
+      )
+    },
+    teams: {
+      home: {
+        id: getNumberOrNull(
+          homeTeam.id
+        ) ?? undefined,
+        name: homeName
+      },
+      away: {
+        id: getNumberOrNull(
+          awayTeam.id
+        ) ?? undefined,
+        name: awayName
+      }
+    },
+    goals: {
+      home: getNumberOrNull(
+        fullTime.home
+      ),
+      away: getNumberOrNull(
+        fullTime.away
+      )
+    },
+    source: 'football-data.org',
+    lastUpdatedAt: new Date().toISOString()
+  };
+}
+
+function extractMatches(
+  value: unknown
+): unknown[] | null {
   if (
-    dataField &&
-    typeof dataField === 'object'
+    !value ||
+    typeof value !== 'object'
   ) {
-    const dataRecord =
-      dataField as UnknownRecord;
-
-    if (Array.isArray(dataRecord.fixtures)) {
-      return dataRecord.fixtures;
-    }
-
-    if (Array.isArray(dataRecord.matches)) {
-      return dataRecord.matches;
-    }
+    return null;
   }
 
-  return null;
+  const data =
+    value as UnknownRecord;
+
+  return Array.isArray(data.matches)
+    ? data.matches
+    : null;
 }
 
 function sanitizeChatHistory(
@@ -389,21 +559,27 @@ function sanitizeChatHistory(
   return value
     .slice(-8)
     .map((item) => {
-      if (!item || typeof item !== 'object') {
+      if (
+        !item ||
+        typeof item !== 'object'
+      ) {
         return null;
       }
 
-      const record = item as UnknownRecord;
+      const record =
+        item as UnknownRecord;
 
-      const sender = sanitizeText(
-        record.sender,
-        30
-      );
+      const sender =
+        sanitizeText(
+          record.sender,
+          30
+        );
 
-      const text = sanitizeText(
-        record.text,
-        3000
-      );
+      const text =
+        sanitizeText(
+          record.text,
+          3000
+        );
 
       if (!text) {
         return null;
@@ -433,35 +609,43 @@ function sanitizeChatHistory(
 app.get(
   '/api/health',
   (_req: Request, res: Response) => {
-    const footballConfigured = Boolean(
-      process.env.API_SPORTS_KEY?.trim() &&
-      process.env.API_SPORTS_HOST?.trim()
-    );
+    const footballConfigured =
+      Boolean(
+        process.env.FOOTBALL_DATA_TOKEN?.trim()
+      );
 
-    const aiConfigured = Boolean(
-      process.env.GEMINI_API_KEY?.trim() &&
-      process.env.GEMINI_MODEL?.trim()
-    );
+    const aiConfigured =
+      Boolean(
+        process.env.GEMINI_API_KEY?.trim() &&
+        process.env.GEMINI_MODEL?.trim()
+      );
 
     const healthy =
-      footballConfigured && aiConfigured;
+      footballConfigured &&
+      aiConfigured;
 
     setNoStore(res);
 
-    return res.status(healthy ? 200 : 503).json({
-      status: healthy ? 'ok' : 'degraded',
-      appName: 'Orla Bet — Pro Analytics & IA Geral',
-      services: {
-        football: footballConfigured,
-        ai: aiConfigured
-      },
-      time: new Date().toISOString()
-    });
+    return res
+      .status(healthy ? 200 : 503)
+      .json({
+        status: healthy
+          ? 'ok'
+          : 'degraded',
+        appName:
+          'Orla Bet — Pro Analytics & IA Geral',
+        services: {
+          footballData:
+            footballConfigured,
+          ai: aiConfigured
+        },
+        time: new Date().toISOString()
+      });
   }
 );
 
 // -------------------------------------------------------------
-// 1. Chat da Orla IA
+// 1. Orla IA
 // -------------------------------------------------------------
 
 app.post(
@@ -476,15 +660,17 @@ app.post(
           ? req.body as UnknownRecord
           : {};
 
-      const message = sanitizeText(
-        body.message,
-        4000
-      );
+      const message =
+        sanitizeText(
+          body.message,
+          4000
+        );
 
-      const gamesSummary = sanitizeText(
-        body.gamesSummary,
-        16000
-      );
+      const gamesSummary =
+        sanitizeText(
+          body.gamesSummary,
+          16000
+        );
 
       const mode =
         body.mode === 'general'
@@ -497,9 +683,10 @@ app.post(
           ? body.selectedMatch
           : null;
 
-      const chatHistory = sanitizeChatHistory(
-        body.chatHistory
-      );
+      const chatHistory =
+        sanitizeChatHistory(
+          body.chatHistory
+        );
 
       if (!message) {
         return res.status(400).json({
@@ -507,19 +694,22 @@ app.post(
         });
       }
 
-      if (!process.env.GEMINI_API_KEY?.trim()) {
+      if (
+        !process.env.GEMINI_API_KEY?.trim()
+      ) {
         return res.status(503).json({
           error:
-            'A inteligência artificial não está configurada no servidor.'
+            'A inteligência artificial não está configurada.'
         });
       }
 
-      const model = process.env.GEMINI_MODEL?.trim();
+      const model =
+        process.env.GEMINI_MODEL?.trim();
 
       if (!model) {
         return res.status(503).json({
           error:
-            'O modelo da inteligência artificial não está configurado.'
+            'O modelo Gemini não está configurado.'
         });
       }
 
@@ -528,7 +718,7 @@ app.post(
       if (!ai) {
         return res.status(503).json({
           error:
-            'Não foi possível inicializar a inteligência artificial.'
+            'Não foi possível inicializar a IA.'
         });
       }
 
@@ -537,50 +727,51 @@ app.post(
           ? `
 MODO: TIPSTER E VALOR ESPERADO
 
-Analise mercados somente quando existirem dados suficientes.
-Não trate uma estimativa como odd real.
+Use somente os dados recebidos.
+Não trate estimativas como odds reais.
 Não invente probabilidades, estatísticas ou placares.
-Se a odd real não estiver no contexto, informe que ela não foi fornecida.
+Se a odd não estiver no contexto, informe que ela não foi fornecida.
 Nunca prometa lucro, acerto ou segurança.
 `
           : `
-MODO: ANALISTA TÁTICO E ESTATÍSTICO
+MODO: ANALISTA TÁTICO
 
 Use somente os dados recebidos.
 Não invente escalações, desfalques, histórico ou estatísticas.
-Quando um dado não estiver disponível, informe claramente:
-"Dado não disponível no contexto recebido."
+Quando um dado não estiver disponível, informe isso claramente.
 `;
 
       const systemInstruction = `
-Você é a Orla IA, assistente de análise de futebol da Orla Bet Pro.
+Você é a Orla IA, assistente de análise de futebol.
 
-Responda sempre em Português do Brasil.
-Use Markdown simples, títulos claros e tópicos objetivos.
+Responda em Português do Brasil.
+Use Markdown simples e tópicos objetivos.
 Use emojis com moderação.
 
 ${modeInstruction}
 
-REGRAS OBRIGATÓRIAS:
+REGRAS:
 
-- Use somente dados presentes no contexto.
+- Use apenas os dados presentes no contexto.
 - Não invente jogos, resultados, odds ou estatísticas.
-- Não diga que um palpite é garantido, seguro ou infalível.
+- Não diga que um palpite é garantido.
 - Não prometa lucro.
 - Diferencie dados reais de estimativas.
-- Informe limitações e dados ausentes.
+- Informe dados ausentes.
 - Apostas envolvem risco financeiro.
 - Recomende gestão responsável de banca.
 `;
 
       const context = `
 CONFRONTOS RECEBIDOS:
+
 ${
   gamesSummary ||
   'Nenhum confronto foi fornecido.'
 }
 
 PARTIDA SELECIONADA:
+
 ${
   selectedMatch
     ? JSON.stringify(selectedMatch)
@@ -588,16 +779,17 @@ ${
 }
 `;
 
-      const historyText = chatHistory
-        .map((item) => {
-          const speaker =
-            item.sender === 'user'
-              ? 'Usuário'
-              : 'Orla IA';
+      const historyText =
+        chatHistory
+          .map((item) => {
+            const speaker =
+              item.sender === 'user'
+                ? 'Usuário'
+                : 'Orla IA';
 
-          return `\({speaker}: \){item.text}`;
-        })
-        .join('\n\n');
+            return `\({speaker}: \){item.text}`;
+          })
+          .join('\n\n');
 
       const contents = [
         historyText,
@@ -617,19 +809,20 @@ ${
           }
         });
 
-      const reply = sanitizeText(
-        response.text,
-        12000
-      );
+      const reply =
+        sanitizeText(
+          response.text,
+          12000
+        );
 
       if (!reply) {
         console.error(
-          'Gemini retornou uma resposta vazia.'
+          'Gemini retornou resposta vazia.'
         );
 
         return res.status(502).json({
           error:
-            'A inteligência artificial não retornou uma análise.'
+            'A IA não retornou uma análise.'
         });
       }
 
@@ -660,17 +853,20 @@ app.get(
     setNoStore(res);
 
     try {
-      const date = getRequestedDate(req);
+      const date =
+        getRequestedDate(req);
 
-      const {
-        apiKey,
-        host
-      } = getProviderConfig();
+      const token =
+        getFootballToken();
 
-      const cacheKey = `fixtures:${date}`;
-      const now = Date.now();
+      const cacheKey =
+        `football-data:${date}`;
 
-      const cached = fixturesCache[cacheKey];
+      const now =
+        Date.now();
+
+      const cached =
+        fixturesCache[cacheKey];
 
       if (
         cached &&
@@ -682,48 +878,55 @@ app.get(
         );
       }
 
-      const providerUrl = buildProviderUrl(
-        host,
-        '/fixtures',
-        {
-          date,
-          timezone: FOOTBALL_TIMEZONE
-        }
+      const apiUrl =
+        new URL(
+          FOOTBALL_DATA_MATCHES_URL
+        );
+
+      apiUrl.searchParams.set(
+        'dateFrom',
+        date
       );
 
-      let apiResponse: globalThis.Response;
+      apiUrl.searchParams.set(
+        'dateTo',
+        date
+      );
+
+      let apiResponse:
+        globalThis.Response;
 
       try {
         apiResponse =
           await fetchWithTimeout(
-            providerUrl,
+            apiUrl.toString(),
             {
               method: 'GET',
               headers: {
                 Accept: 'application/json',
-                'x-rapidapi-host': host,
-                'x-rapidapi-key': apiKey
-              }
+                'X-Auth-Token': token
+              },
+              cache: 'no-store'
             }
           );
       } catch (error) {
         console.error(
-          'Falha de conexão com o provedor de futebol:',
+          'Falha de conexão com football-data.org:',
           getErrorMessage(error)
         );
 
         return res.status(502).json({
           error:
-            'Não foi possível consultar os jogos neste momento.'
+            'Não foi possível consultar os jogos.'
         });
       }
 
       const providerData =
-        await readProviderJson(apiResponse);
+        await readJson(apiResponse);
 
       if (!apiResponse.ok) {
         console.error(
-          'API de futebol respondeu com erro:',
+          'football-data.org respondeu com erro:',
           {
             status: apiResponse.status,
             response: providerData
@@ -736,38 +939,46 @@ app.get(
         });
       }
 
-      const matches =
-        extractArrayFromResponse(
-          providerData
-        );
+      const rawMatches =
+        extractMatches(providerData);
 
-      if (!matches) {
+      if (!rawMatches) {
         console.error(
-          'Formato inesperado retornado pela API de futebol:',
+          'Formato inesperado na resposta da API:',
           providerData
         );
 
         return res.status(502).json({
           error:
-            'A resposta do provedor de futebol está em formato inválido.'
+            'A resposta da API está em formato inválido.'
         });
       }
 
-      // Array vazio significa que não existem jogos
-      // para a data consultada.
-      // Não deve ser substituído por jogos fictícios.
+      const normalizedMatches =
+        rawMatches
+          .map(normalizeMatch)
+          .filter(
+            (
+              match
+            ): match is NormalizedMatch =>
+              match !== null
+          );
+
       fixturesCache[cacheKey] = {
         timestamp: now,
-        data: matches
+        data: normalizedMatches
       };
 
-      return res.status(200).json(matches);
+      return res.status(200).json(
+        normalizedMatches
+      );
     } catch (error) {
-      const message = getErrorMessage(error);
+      const message =
+        getErrorMessage(error);
 
       if (
         message.includes(
-          'formato AAAA-MM-DD'
+          'AAAA-MM-DD'
         )
       ) {
         return res.status(400).json({
@@ -777,20 +988,16 @@ app.get(
 
       if (
         message.includes(
-          'API_SPORTS_KEY'
-        ) ||
-        message.includes(
-          'API_SPORTS_HOST'
+          'FOOTBALL_DATA_TOKEN'
         )
       ) {
         console.error(
-          'Configuração esportiva incompleta:',
-          message
+          'Token da football-data.org ausente.'
         );
 
         return res.status(503).json({
           error:
-            'A integração de futebol não está configurada no servidor.'
+            'A integração de futebol não está configurada.'
         });
       }
 
@@ -801,14 +1008,14 @@ app.get(
 
       return res.status(500).json({
         error:
-          'Erro ao buscar confrontos.'
+          'Erro interno ao buscar partidas.'
       });
     }
   }
 );
 
 // -------------------------------------------------------------
-// 3. Histórico H2H
+// 3. H2H
 // -------------------------------------------------------------
 
 app.get(
@@ -818,7 +1025,7 @@ app.get(
 
     return res.status(501).json({
       error:
-        'O histórico H2H ainda não possui uma fonte real configurada.'
+        'O H2H ainda precisa ser adaptado ao endpoint real da API.'
     });
   }
 );
@@ -829,144 +1036,18 @@ app.get(
 
 app.get(
   '/api/football/players-search',
-  async (req: Request, res: Response) => {
+  (_req: Request, res: Response) => {
     setNoStore(res);
 
-    try {
-      const search =
-        getQueryString(req.query.search) || 'm';
-
-      if (
-        search.length < 1 ||
-        search.length > 80
-      ) {
-        return res.status(400).json({
-          error:
-            'O termo de busca é inválido.'
-        });
-      }
-
-      const {
-        apiKey,
-        host
-      } = getProviderConfig();
-
-      const cacheKey =
-        `players:${search.toLowerCase()}`;
-
-      const now = Date.now();
-
-      const cached =
-        playersCache[cacheKey];
-
-      if (
-        cached &&
-        now - cached.timestamp <
-          PLAYERS_CACHE_TTL_MS
-      ) {
-        return res.status(200).json(
-          cached.data
-        );
-      }
-
-      const providerUrl = buildProviderUrl(
-        host,
-        '/football-players-search',
-        {
-          search
-        }
-      );
-
-      let apiResponse: globalThis.Response;
-
-      try {
-        apiResponse =
-          await fetchWithTimeout(
-            providerUrl,
-            {
-              method: 'GET',
-              headers: {
-                Accept: 'application/json',
-                'x-rapidapi-host': host,
-                'x-rapidapi-key': apiKey
-              }
-            }
-          );
-      } catch (error) {
-        console.error(
-          'Falha na busca de jogadores:',
-          getErrorMessage(error)
-        );
-
-        return res.status(502).json({
-          error:
-            'Não foi possível consultar jogadores neste momento.'
-        });
-      }
-
-      const providerData =
-        await readProviderJson(apiResponse);
-
-      if (!apiResponse.ok) {
-        console.error(
-          'API de jogadores respondeu com erro:',
-          {
-            status: apiResponse.status,
-            response: providerData
-          }
-        );
-
-        return res.status(502).json({
-          error:
-            'O provedor de jogadores recusou a consulta.'
-        });
-      }
-
-      playersCache[cacheKey] = {
-        timestamp: now,
-        data: providerData
-      };
-
-      return res.status(200).json(
-        providerData
-      );
-    } catch (error) {
-      const message = getErrorMessage(error);
-
-      if (
-        message.includes(
-          'API_SPORTS_KEY'
-        ) ||
-        message.includes(
-          'API_SPORTS_HOST'
-        )
-      ) {
-        console.error(
-          'Configuração esportiva incompleta:',
-          message
-        );
-
-        return res.status(503).json({
-          error:
-            'A integração esportiva não está configurada.'
-        });
-      }
-
-      console.error(
-        'Erro em /api/football/players-search:',
-        message
-      );
-
-      return res.status(500).json({
-        error:
-          'Erro interno na busca de jogadores.'
-      });
-    }
+    return res.status(501).json({
+      error:
+        'A busca de jogadores ainda precisa ser adaptada a uma fonte compatível.'
+    });
   }
 );
 
 // -------------------------------------------------------------
-// Erros não tratados
+// Middleware de erro
 // -------------------------------------------------------------
 
 app.use(
@@ -977,48 +1058,58 @@ app.use(
     _next: NextFunction
   ) => {
     console.error(
-      'Erro não tratado no servidor:',
+      'Erro não tratado:',
       getErrorMessage(error)
     );
 
-    return sendApiError(
-      res,
-      500,
-      'Erro interno do servidor.'
-    );
+    setNoStore(res);
+
+    return res.status(500).json({
+      error:
+        'Erro interno do servidor.'
+    });
   }
 );
 
 // -------------------------------------------------------------
-// Inicialização do servidor e Vite
+// Inicialização
 // -------------------------------------------------------------
 
 async function startServer(): Promise<void> {
-  if (process.env.NODE_ENV !== 'production') {
-    const { createServer } = await import('vite');
+  if (
+    process.env.NODE_ENV !== 'production'
+  ) {
+    const { createServer } =
+      await import('vite');
 
-    const vite = await createServer({
-      server: {
-        middlewareMode: true
-      },
-      appType: 'spa'
-    });
+    const vite =
+      await createServer({
+        server: {
+          middlewareMode: true
+        },
+        appType: 'spa'
+      });
 
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(
-      process.cwd(),
-      'dist'
+    const distPath =
+      path.join(
+        process.cwd(),
+        'dist'
+      );
+
+    const indexPath =
+      path.join(
+        distPath,
+        'index.html'
+      );
+
+    app.use(
+      express.static(distPath)
     );
 
-    const indexPath = path.join(
-      distPath,
-      'index.html'
-    );
-
-    app.use(express.static(distPath));
-
-    // Rotas da API não devem cair no index.html.
+    // Somente rotas que não são /api
+    // devem cair no index.html.
     app.get(
       /^\/(?!api(?:\/|$)).*/,
       (_req: Request, res: Response) => {
@@ -1038,10 +1129,9 @@ async function startServer(): Promise<void> {
   );
 }
 
-// A Render inicia o servidor normalmente.
-// Na Vercel, o app deverá ser importado
-// por uma função própria dentro de api/.
-if (process.env.VERCEL !== '1') {
+if (
+  process.env.VERCEL !== '1'
+) {
   startServer().catch((error) => {
     console.error(
       'Falha ao iniciar o servidor:',

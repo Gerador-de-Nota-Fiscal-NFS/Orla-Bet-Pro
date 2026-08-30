@@ -98,8 +98,8 @@ export default function App() {
     setLoading(true);
     try {
       const fetched = await fetchDailyGames(dateStr);
-      // FILTRO DE SEGURANÇA: remove jogos com dados incompletos
-      const validGames = fetched.filter(g => 
+      // 🛡️ BLINDAGEM 1: Remove jogos que venham com dados incompletos da API
+      const validGames = (fetched || []).filter((g: any) => 
         g?.fixture?.id && 
         g?.teams?.home?.name && 
         g?.teams?.away?.name &&
@@ -117,10 +117,10 @@ export default function App() {
     loadGames(selectedDate);
   }, [selectedDate]);
 
-  // ✅ CORREÇÃO: optional chaining em status.short
+  // 🛡️ BLINDAGEM 2: Optional chaining (?.) para evitar erro de "undefined reading 'short'"
   const liveMatchesCount = useMemo(() => {
     return games.filter(g => 
-      ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(g.fixture.status?.short || '')
+      ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(g.fixture?.status?.short || '')
     ).length;
   }, [games]);
 
@@ -128,17 +128,18 @@ export default function App() {
     return games.filter(game => {
       if (selectedLeague !== 'all' && String(game.league?.id) !== selectedLeague) return false;
       
-      // ✅ CORREÇÃO: optional chaining
       if (onlyLive) {
-        const isLive = ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(game.fixture.status?.short || '');
+        const isLive = ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(game.fixture?.status?.short || '');
         if (!isLive) return false;
       }
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
+        // 🛡️ BLINDAGEM 3: Garante que name seja string antes de usar .toLowerCase()
         const homeName = game.teams?.home?.name?.toLowerCase() || '';
         const awayName = game.teams?.away?.name?.toLowerCase() || '';
         const leagueName = game.league?.name?.toLowerCase() || '';
+        
         if (!homeName.includes(q) && !awayName.includes(q) && !leagueName.includes(q)) return false;
       }
       return true;
@@ -226,7 +227,7 @@ export default function App() {
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </>
     );
-  }
+          }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-cyan-50/20 to-slate-100 text-slate-900 flex flex-col selection:bg-cyan-500 selection:text-white">
@@ -417,7 +418,7 @@ export default function App() {
       <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-400 mt-12">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-lg"></span>
+            <span className="text-lg">⚽</span>
             <span className="font-black text-slate-700 uppercase tracking-tight">Orla Bet Pro</span>
             <span className="text-[10px] text-slate-400">© {new Date().getFullYear()} Todos os direitos reservados.</span>
             <button onClick={() => setIsSecretAdminOpen(true)} className="text-slate-300 hover:text-red-500 transition cursor-pointer p-1 ml-2" title="Acesso Restrito">🔒</button>

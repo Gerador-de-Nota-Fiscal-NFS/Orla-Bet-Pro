@@ -133,6 +133,16 @@ function isRecord(value: unknown): value is UnknownRecord {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
+// CORREÇÃO 4: Função getBrazilDate() para usar fuso horário correto
+function getBrazilDate(): string {
+  const now = new Date();
+  const brazilTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const year = brazilTime.getFullYear();
+  const month = String(brazilTime.getMonth() + 1).padStart(2, '0');
+  const day = String(brazilTime.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // Função de normalização para atender aos logs da Correção 6
 function normalizeMatch(item: any): NormalizedMatch | null {
   if (!item || !item.homeTeam || !item.awayTeam) return null;
@@ -192,6 +202,19 @@ async function startServer() {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '1mb' }));
 
+  // CORREÇÃO: Configuração de CORS para permitir requisições do frontend
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    
+    next();
+  });
+
   // -----------------------------------------------------------
   // Rota de Health Check
   // -----------------------------------------------------------
@@ -200,7 +223,8 @@ async function startServer() {
       status: 'ok',
       service: 'Orla Bet Pro Analytics Backend',
       uptime: process.uptime(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      footballDataTokenConfigured: Boolean(process.env.FOOTBALL_DATA_TOKEN?.trim())
     });
   });
 
@@ -212,17 +236,28 @@ async function startServer() {
     console.log('[fixtures] rota chamada:', req.originalUrl);
     
     try {
-      const dateStr = getQueryString(req.query.date) || new Date().toISOString().split('T')[0];
+      // CORREÇÃO: Usar getBrazilDate() para data correta no fuso horário do Brasil
+      const dateStr = getQueryString(req.query.date) || getBrazilDate();
+      const nocache = req.query.nocache === 'true';
       const cacheKey = `fixtures_${dateStr}`;
 
-      // Check cache
+      // CORREÇÃO: Log da data sendo usada
+      console.log('[fixtures] data solicitada:', dateStr);
+      console.log('[fixtures] nocache:', nocache);
+
+      // Check cache (respeitar nocache)
       const cached = fixturesCache[cacheKey];
-      if (cached && Date.now() - cached.timestamp < FOOTBALL_CACHE_TTL_MS) {
+      if (!nocache && cached && Date.now() - cached.timestamp < FOOTBALL_CACHE_TTL_MS) {
+        console.log('[fixtures] retornando do cache:', cached.data.length, 'partidas');
         return res.json({ matches: cached.data });
       }
 
       // CORREÇÃO 2: Token lido corretamente, sem variáveis RapidAPI
       const token = process.env.FOOTBALL_DATA_TOKEN?.trim();
+      
+      // CORREÇÃO: Log do token (apenas se está configurado, não o valor)
+      console.log('[fixtures] token configurado:', Boolean(token));
+      
       let normalizedMatches: NormalizedMatch[] = [];
 
       if (token) {
@@ -230,7 +265,10 @@ async function startServer() {
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
           
-          const apiResponse = await fetch(`${FOOTBALL_DATA_MATCHES_URL}?dateFrom=${dateStr}&dateTo=${dateStr}`, {
+          const apiUrl = `${FOOTBALL_DATA_MATCHES_URL}?dateFrom=${dateStr}&dateTo=${dateStr}`;
+          console.log('[fixtures] URL da API:', apiUrl);
+          
+          const apiResponse = await fetch(apiUrl, {
             // CORREÇÃO 3: Headers exatos solicitados
             headers: {
               'Accept': 'application/json',
@@ -239,6 +277,9 @@ async function startServer() {
             signal: controller.signal
           });
           clearTimeout(timeout);
+
+          // CORREÇÃO: Log do status da resposta
+          console.log('[fixtures] status da resposta:', apiResponse.status);
 
           if (apiResponse.ok) {
             const providerData = await apiResponse.json();
@@ -269,6 +310,16 @@ async function startServer() {
               '[football-data] partidas normalizadas:',
               normalizedMatches.length
             );
+          } else {
+            // CORREÇÃO: Tratamento específico de erros
+            const errorText = await apiResponse.text();
+            console.error('[fixtures] erro da API:', apiResponse.status, errorText);
+            
+            if (apiResponse.status === 401 || apiResponse.status === 403) {
+              console.error('[fixtures] token inválido ou expirado');
+            } else if (apiResponse.status === 429) {
+              console.error('[fixtures] limite de requisições excedido (10/min no plano gratuito)');
+            }
           }
         } catch (e) {
           console.warn('Football-Data.org request failed:', getErrorMessage(e));
@@ -286,6 +337,7 @@ async function startServer() {
         data: normalizedMatches
       };
 
+      console.log('[fixtures] retornando:', normalizedMatches.length, 'partidas');
       res.json({ matches: normalizedMatches });
     } catch (error) {
       console.error('Erro em /api/football/fixtures:', error);
@@ -421,6 +473,8 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
   // -----------------------------------------------------------
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`⚡ Orla Bet Server running on http://0.0.0.0:${PORT}`);
+    console.log(` FOOTBALL_DATA_TOKEN configurado: ${Boolean(process.env.FOOTBALL_DATA_TOKEN?.trim())}`);
+    console.log(`🔑 GEMINI_API_KEY configurada: ${Boolean(process.env.GEMINI_API_KEY?.trim())}`);
   });
 }
 

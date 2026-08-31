@@ -52,18 +52,12 @@ type NormalizedMatch = {
 // Configurações
 // -------------------------------------------------------------
 
-// ✅ CORREÇÃO 1: Usar PORT da variável de ambiente (Render define automaticamente)
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const FOOTBALL_TIMEZONE = 'America/Sao_Paulo';
+const FOOTBALL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min cache
+const LIVE_CACHE_TTL_MS = 30 * 1000; // 30s cache para jogos ao vivo
+const REQUEST_TIMEOUT_MS = 15 * 1000; // 15s timeout
 
-// ✅ CORREÇÃO 3: Cache aumentado de 1 min para 5 min (evita atingir limite de 100 req/dia)
-const FOOTBALL_CACHE_TTL_MS = 5 * 60 * 1000;
-const LIVE_CACHE_TTL_MS = 30 * 1000; // Cache curto para jogos ao vivo (30s)
-
-// ✅ CORREÇÃO 4: Timeout aumentado de 12s para 15s
-const REQUEST_TIMEOUT_MS = 15 * 1000;
-
-// Endpoint correto da API-Football v3
 const API_FOOTBALL_FIXTURES_URL = 'https://v3.football.api-sports.io/fixtures';
 const API_FOOTBALL_LIVE_URL = 'https://v3.football.api-sports.io/fixtures?live=all';
 
@@ -133,11 +127,9 @@ function sanitizeText(value: unknown, maxLength: number): string {
   return value.trim().slice(0, maxLength);
 }
 
-// ✅ CORREÇÃO 2: Fuso horário brasileiro com cálculo matemático preciso
 function getBrazilDate(): string {
   try {
     const now = new Date();
-    // Cálculo preciso: UTC + offset do timezone (-3h para São Paulo)
     const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
     const brazilOffset = -3 * 3600000; // UTC-3
     const brazilTime = new Date(utcTime + brazilOffset);
@@ -151,7 +143,6 @@ function getBrazilDate(): string {
   }
 }
 
-// Normalizador para API-Football v3
 function normalizeMatch(item: any): NormalizedMatch | null {
   if (!item || !item.fixture || !item.teams) return null;
 
@@ -246,7 +237,6 @@ async function startServer() {
       console.log('[fixtures] data solicitada:', dateStr);
       console.log('[fixtures] data do Brasil (hoje):', getBrazilDate());
 
-      // Verificar Cache
       const cached = fixturesCache[cacheKey];
       if (!nocache && cached && Date.now() - cached.timestamp < FOOTBALL_CACHE_TTL_MS) {
         console.log('[fixtures] retornando do cache:', cached.data.length, 'partidas');
@@ -266,9 +256,7 @@ async function startServer() {
 
           const apiResponse = await fetch(apiUrl, {
             method: 'GET',
-            headers: {
-              'x-apisports-key': token
-            },
+            headers: { 'x-apisports-key': token },
             cache: 'no-store',
             signal: controller.signal
           });
@@ -290,26 +278,18 @@ async function startServer() {
 
             const rawMatches = providerData.response || [];
 
-            console.log(
-              '[api-football] partidas recebidas:',
-              rawMatches.length
-            );
+            console.log('[api-football] partidas recebidas:', rawMatches.length);
 
             normalizedMatches = rawMatches
               .map(normalizeMatch)
               .filter((match): match is NormalizedMatch => match !== null);
 
-            console.log(
-              '[api-football] partidas normalizadas:',
-              normalizedMatches.length
-            );
+            console.log('[api-football] partidas normalizadas:', normalizedMatches.length);
 
-            // ✅ CORREÇÃO 6: Log explicativo quando não há jogos
             if (normalizedMatches.length === 0) {
               console.warn(
-                '[fixtures] ⚠️ Nenhum jogo encontrado para',
-                dateStr,
-                '- Possíveis motivos: (1) Plano gratuito só retorna certas ligas, (2) Não há jogos nesta data, (3) Fuso horário diferente'
+                '[fixtures] ⚠️ Nenhum jogo encontrado para', dateStr,
+                '- Motivos: (1) Plano gratuito limita ligas, (2) Sem jogos nesta data, (3) Fuso horário'
               );
             }
           } else {
@@ -329,31 +309,25 @@ async function startServer() {
         console.warn('[fixtures] API_FOOTBALL_KEY não configurado no ambiente.');
       }
 
-      // Salvar Cache
-      fixturesCache[cacheKey] = {
-        timestamp: Date.now(),
-        data: normalizedMatches
-      };
+      fixturesCache[cacheKey] = { timestamp: Date.now(), data: normalizedMatches };
 
       console.log('[fixtures] retornando:', normalizedMatches.length, 'partidas');
       res.json({ matches: normalizedMatches, source: 'api', date: dateStr });
     } catch (error) {
       console.error('Erro em /api/football/fixtures:', error);
-      res.status(500).json({
-        error: 'Falha ao buscar partidas de futebol.',
-        details: getErrorMessage(error)
-      });
+      res.status(500).json({ error: 'Falha ao buscar partidas de futebol.', details: getErrorMessage(error) });
     }
   });
 
-  // ✅ CORREÇÃO 5: NOVO ENDPOINT - Jogos ao vivo em tempo real
+  // -----------------------------------------------------------
+  // Rota de Jogos Ao Vivo em Tempo Real
+  // -----------------------------------------------------------
   app.get('/api/football/live', async (req: Request, res: Response) => {
     console.log('[live] rota chamada:', req.originalUrl);
 
     try {
       const nocache = req.query.nocache === 'true';
 
-      // Cache curto para jogos ao vivo (30 segundos)
       if (!nocache && liveCache && Date.now() - liveCache.timestamp < LIVE_CACHE_TTL_MS) {
         console.log('[live] retornando do cache:', liveCache.data.length, 'partidas ao vivo');
         return res.json({ matches: liveCache.data, source: 'cache' });
@@ -371,9 +345,7 @@ async function startServer() {
 
           const apiResponse = await fetch(API_FOOTBALL_LIVE_URL, {
             method: 'GET',
-            headers: {
-              'x-apisports-key': token
-            },
+            headers: { 'x-apisports-key': token },
             cache: 'no-store',
             signal: controller.signal
           });
@@ -401,20 +373,13 @@ async function startServer() {
         }
       }
 
-      // Salvar no cache de jogos ao vivo
-      const newLiveCache: CacheEntry<NormalizedMatch[]> = {
-        timestamp: Date.now(),
-        data: normalizedMatches
-      };
-
+      const newLiveCache: CacheEntry<NormalizedMatch[]> = { timestamp: Date.now(), data: normalizedMatches };
+      
       console.log('[live] retornando:', normalizedMatches.length, 'partidas ao vivo');
       res.json({ matches: normalizedMatches, source: 'api', live: true });
     } catch (error) {
       console.error('Erro em /api/football/live:', error);
-      res.status(500).json({
-        error: 'Falha ao buscar partidas ao vivo.',
-        details: getErrorMessage(error)
-      });
+      res.status(500).json({ error: 'Falha ao buscar partidas ao vivo.', details: getErrorMessage(error) });
     }
   });
 
@@ -436,7 +401,6 @@ async function startServer() {
         return res.json({ matches: cached.data });
       }
 
-      // Retorna array vazio caso não haja API de H2H conectada
       res.json({ matches: [] });
     } catch (error) {
       console.error('Erro em /api/football/h2h:', error);
@@ -445,7 +409,90 @@ async function startServer() {
   });
 
   // -----------------------------------------------------------
-  // Rota de IA Esportiva (Gemini)
+  // 🌟 NOVO ENDPOINT: Gerador de Bilhetes com IA + Google Search
+  // -----------------------------------------------------------
+  app.post('/api/ai/ticket', async (req: Request, res: Response) => {
+    try {
+      const { matches, ticketType = 'conservative' } = req.body;
+
+      if (!matches || !Array.isArray(matches) || matches.length === 0) {
+        return res.status(400).json({ error: 'Nenhum jogo fornecido para análise.' });
+      }
+
+      const ai = getGenAI();
+      if (!ai) {
+        return res.status(503).json({ error: 'IA não configurada. Adicione GEMINI_API_KEY nas variáveis de ambiente.' });
+      }
+
+      const gamesContext = matches.map((m: NormalizedMatch, i: number) => {
+        return `${i + 1}. ${m.teams.home.name} vs ${m.teams.away.name} | Liga: ${m.league.name} | Horário: ${m.fixture.date}`;
+      }).join('\n');
+
+      const prompt = `Você é um analista profissional de apostas esportivas com acesso ao Google Search em tempo real.
+
+CONTEXTO DOS JOGOS DE HOJE:
+${gamesContext}
+
+TAREFA:
+1. Use o Google Search para pesquisar informações REAIS sobre estes jogos (lesões, forma recente, confrontos diretos, motivação).
+2. Monte UM bilhete múltiplo com 3 a 5 seleções de ALTA CONFIANÇA.
+3. Para CADA seleção, forneça: Jogo, Mercado, Odd estimada, Nível de confiança (Alto/Médio/Baixo), Justificativa detalhada e Fonte da informação.
+4. Calcule: Odd total, Stake recomendada (% da banca), Retorno potencial para cada R$ 10 e Nível de risco geral.
+5. Inclua um aviso de jogo responsável no final.
+
+FORMATO DE RESPOSTA (JSON estrito, sem markdown):
+{
+  "ticketTitle": "Bilhete Múltiplo Inteligente",
+  "totalOdd": 0.00,
+  "confidenceLevel": "Alto/Médio/Baixo",
+  "riskLevel": "Baixo/Médio/Alto",
+  "recommendedStake": "1-2% da banca",
+  "potentialReturn": "R$ X para cada R$ 10",
+  "selections": [
+    {
+      "game": "Time A vs Time B",
+      "league": "Nome da Liga",
+      "market": "Mercado escolhido",
+      "selection": "Seleção específica",
+      "odd": 0.00,
+      "confidence": "Alto/Médio/Baixo",
+      "justification": "Justificativa detalhada com base nas pesquisas",
+      "source": "Fonte da informação"
+    }
+  ],
+  "responsibleGamingWarning": "Aviso de jogo responsável",
+  "generatedAt": "timestamp ISO",
+  "searchQueriesUsed": ["lista das pesquisas feitas no Google"]
+}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: prompt,
+        config: {
+          temperature: 0.3,
+          tools: [{ googleSearch: {} }] // Ativa a pesquisa na internet em tempo real
+        }
+      });
+
+      const reply = response.text || '';
+      
+      try {
+        const cleanJson = reply.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        const ticketData = JSON.parse(cleanJson);
+        
+        res.json({ success: true, ticket: ticketData, rawResponse: reply });
+      } catch (parseError) {
+        res.json({ success: true, ticket: null, rawResponse: reply, parseError: 'Não foi possível parsear o JSON' });
+      }
+
+    } catch (error) {
+      console.error('Erro ao gerar bilhete com IA:', error);
+      res.status(500).json({ error: 'Erro ao gerar bilhete inteligente.', details: getErrorMessage(error) });
+    }
+  });
+
+  // -----------------------------------------------------------
+  // Rota de IA Esportiva (Chat Gemini)
   // -----------------------------------------------------------
   app.post('/api/ai/chat', async (req: Request, res: Response) => {
     try {
@@ -462,8 +509,8 @@ async function startServer() {
           reply: `🤖 **Orla IA (Assistente Esportivo)**\n\nRecebi sua análise sobre: "${sanitizeText(message, 100)}".\n\n` +
             `⚽ **Princípios de Gestão de Risco:**\n` +
             `• Mantenha stake controlada (1% a 2% da banca por entrada).\n` +
-            `• Priorize mercados de valor (+EV), como Dupla Chance ou Over Gols em jogos de alta intensidade.\n\n` +
-            ` *Configure a chave GEMINI_API_KEY nas variáveis de ambiente para análises aprofundadas com inteligência artificial generativa em tempo real.*`
+            `• Priorize mercados de valor (+EV).\n\n` +
+            `💡 *Configure a chave GEMINI_API_KEY nas variáveis de ambiente para análises aprofundadas.*`
         });
       }
 
@@ -500,10 +547,7 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
       res.json({ reply });
     } catch (error) {
       console.error('Erro no processamento Gemini IA:', error);
-      res.status(500).json({
-        error: 'Erro ao gerar resposta com a IA.',
-        details: getErrorMessage(error)
-      });
+      res.status(500).json({ error: 'Erro ao gerar resposta com a IA.', details: getErrorMessage(error) });
     }
   });
 
@@ -530,10 +574,7 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error('Unhandled server error:', err);
     if (!res.headersSent) {
-      res.status(500).json({
-        error: 'Erro interno no servidor.',
-        message: getErrorMessage(err)
-      });
+      res.status(500).json({ error: 'Erro interno no servidor.', message: getErrorMessage(err) });
     }
   });
 
@@ -542,10 +583,10 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
   // -----------------------------------------------------------
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`⚡ Orla Bet Server running on http://0.0.0.0:${PORT}`);
-    console.log(` Data atual no Brasil: ${getBrazilDate()}`);
+    console.log(`📅 Data atual no Brasil: ${getBrazilDate()}`);
     console.log(`🔑 API_FOOTBALL_KEY configurado: ${Boolean(process.env.API_FOOTBALL_KEY?.trim())}`);
     console.log(`🤖 GEMINI_API_KEY configurada: ${Boolean(process.env.GEMINI_API_KEY?.trim())}`);
-    console.log(`️ Cache de fixtures: ${FOOTBALL_CACHE_TTL_MS / 1000}s | Cache de jogos ao vivo: ${LIVE_CACHE_TTL_MS / 1000}s`);
+    console.log(`⏱️ Cache de fixtures: ${FOOTBALL_CACHE_TTL_MS / 1000}s | Cache de jogos ao vivo: ${LIVE_CACHE_TTL_MS / 1000}s`);
   });
 }
 

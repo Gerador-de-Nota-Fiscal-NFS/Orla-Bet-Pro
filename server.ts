@@ -52,11 +52,13 @@ type NormalizedMatch = {
 // Configurações
 // -------------------------------------------------------------
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const FOOTBALL_TIMEZONE = 'America/Sao_Paulo';
 const FOOTBALL_CACHE_TTL_MS = 60 * 1000; // 1 minuto de cache
 const REQUEST_TIMEOUT_MS = 12 * 1000;
-const FOOTBALL_DATA_MATCHES_URL = 'https://api.football-data.org/v4/matches';
+
+// Endpoint correto da API-Football v3
+const API_FOOTBALL_FIXTURES_URL = 'https://v3.football.api-sports.io/fixtures';
 
 // -------------------------------------------------------------
 // Cache em memória
@@ -136,51 +138,43 @@ function getBrazilDate(): string {
   }
 }
 
-// Normalizador para Football-Data.org
-function normalizeFootballDataMatch(item: any): NormalizedMatch | null {
-  if (!item || !item.homeTeam || !item.awayTeam) return null;
-
-  const statusMap: Record<string, { long: string; short: string; elapsed: number | null }> = {
-    'SCHEDULED': { long: 'Não iniciado', short: 'NS', elapsed: null },
-    'TIMED': { long: 'Agendado', short: 'NS', elapsed: null },
-    'IN_PLAY': { long: 'Em Jogo', short: 'LIVE', elapsed: null },
-    'PAUSED': { long: 'Intervalo', short: 'HT', elapsed: 45 },
-    'FINISHED': { long: 'Encerrado', short: 'FT', elapsed: 90 },
-    'POSTPONED': { long: 'Adiado', short: 'POSTP', elapsed: null },
-    'CANCELLED': { long: 'Cancelado', short: 'CANC', elapsed: null }
-  };
-
-  const status = statusMap[item.status] || { long: item.status || 'Não iniciado', short: 'NS', elapsed: null };
+// Normalizador para API-Football v3
+function normalizeMatch(item: any): NormalizedMatch | null {
+  if (!item || !item.fixture || !item.teams) return null;
 
   return {
     fixture: {
-      id: item.id,
-      date: item.utcDate,
-      timestamp: item.utcDate ? Math.floor(new Date(item.utcDate).getTime() / 1000) : null,
-      timezone: 'UTC',
-      status
+      id: item.fixture.id,
+      date: item.fixture.date,
+      timestamp: item.fixture.timestamp || null,
+      timezone: item.fixture.timezone || 'UTC',
+      status: {
+        long: item.fixture.status?.long || 'Not Started',
+        short: item.fixture.status?.short || 'NS',
+        elapsed: item.fixture.status?.elapsed || null
+      }
     },
     league: {
-      id: item.competition?.id,
-      name: item.competition?.name || 'Futebol'
+      id: item.league?.id,
+      name: item.league?.name || 'Desconhecida'
     },
     teams: {
       home: {
-        id: item.homeTeam?.id,
-        name: item.homeTeam?.name || 'Mandante',
-        logo: item.homeTeam?.crest || undefined
+        id: item.teams.home?.id,
+        name: item.teams.home?.name || 'Mandante',
+        logo: item.teams.home?.logo || undefined
       },
       away: {
-        id: item.awayTeam?.id,
-        name: item.awayTeam?.name || 'Visitante',
-        logo: item.awayTeam?.crest || undefined
+        id: item.teams.away?.id,
+        name: item.teams.away?.name || 'Visitante',
+        logo: item.teams.away?.logo || undefined
       }
     },
     goals: {
-      home: item.score?.fullTime?.home ?? null,
-      away: item.score?.fullTime?.away ?? null
+      home: item.goals?.home ?? null,
+      away: item.goals?.away ?? null
     },
-    source: 'football-data.org',
+    source: 'api-football',
     lastUpdatedAt: new Date().toISOString()
   };
 }
@@ -199,7 +193,7 @@ async function startServer() {
   app.use((req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-apisports-key');
 
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
@@ -211,14 +205,14 @@ async function startServer() {
   // Rota de Health Check
   // -----------------------------------------------------------
   app.get('/api/health', (_req: Request, res: Response) => {
-    const hasToken = Boolean((process.env.FOOTBALL_DATA_TOKEN || process.env.FOOTBALL_DATA_API_KEY)?.trim());
+    const hasApiFootballKey = Boolean(process.env.API_FOOTBALL_KEY?.trim());
     const hasGemini = Boolean(process.env.GEMINI_API_KEY?.trim());
     res.json({
       status: 'ok',
       service: 'Orla Bet Pro Analytics Backend',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
-      footballDataConfigured: hasToken,
+      apiFootballConfigured: hasApiFootballKey,
       geminiConfigured: hasGemini
     });
   });
@@ -227,6 +221,8 @@ async function startServer() {
   // Rota de Jogos / Fixtures
   // -----------------------------------------------------------
   app.get('/api/football/fixtures', async (req: Request, res: Response) => {
+    console.log('[fixtures] rota chamada:', req.originalUrl);
+
     try {
       const dateStr = getQueryString(req.query.date) || getBrazilDate();
       const nocache = req.query.nocache === 'true';
@@ -235,10 +231,11 @@ async function startServer() {
       // Verificar Cache
       const cached = fixturesCache[cacheKey];
       if (!nocache && cached && Date.now() - cached.timestamp < FOOTBALL_CACHE_TTL_MS) {
+        console.log('[fixtures] retornando do cache:', cached.data.length, 'partidas');
         return res.json({ matches: cached.data });
       }
 
-      const token = (process.env.FOOTBALL_DATA_TOKEN || process.env.FOOTBALL_DATA_API_KEY)?.trim();
+      const token = process.env.API_FOOTBALL_KEY?.trim();
       let normalizedMatches: NormalizedMatch[] = [];
 
       if (token) {
@@ -246,28 +243,62 @@ async function startServer() {
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-          const apiUrl = `${FOOTBALL_DATA_MATCHES_URL}?dateFrom=${dateStr}&dateTo=${dateStr}`;
+          const apiUrl = `${API_FOOTBALL_FIXTURES_URL}?date=${dateStr}`;
+          console.log('[fixtures] URL da API:', apiUrl);
+
           const apiResponse = await fetch(apiUrl, {
+            method: 'GET',
             headers: {
-              'Accept': 'application/json',
-              'X-Auth-Token': token
+              'x-apisports-key': token
             },
+            cache: 'no-store',
             signal: controller.signal
           });
           clearTimeout(timeout);
 
+          console.log('[fixtures] status da resposta:', apiResponse.status);
+
           if (apiResponse.ok) {
             const providerData = await apiResponse.json();
-            const rawMatches = providerData.matches || [];
+            
+            console.log(
+              '[api-football] resposta do provedor:',
+              {
+                status: apiResponse.status,
+                body: JSON.stringify(providerData).slice(0, 3000)
+              }
+            );
+
+            const rawMatches = providerData.response || [];
+            
+            console.log(
+              '[api-football] partidas recebidas:',
+              rawMatches.length
+            );
+
             normalizedMatches = rawMatches
-              .map(normalizeFootballDataMatch)
-              .filter((match: NormalizedMatch | null): match is NormalizedMatch => match !== null);
+              .map(normalizeMatch)
+              .filter((match): match is NormalizedMatch => match !== null);
+
+            console.log(
+              '[api-football] partidas normalizadas:',
+              normalizedMatches.length
+            );
           } else {
-            console.warn(`[fixtures] Football-Data API retornou status ${apiResponse.status}`);
+            const errorText = await apiResponse.text();
+            console.warn(`[fixtures] API-Football retornou status ${apiResponse.status}:`, errorText);
+            
+            if (apiResponse.status === 401 || apiResponse.status === 403) {
+              console.error('[fixtures] token inválido ou expirado');
+            } else if (apiResponse.status === 429) {
+              console.error('[fixtures] limite de requisições excedido');
+            }
           }
         } catch (e) {
-          console.warn('[fixtures] Erro na consulta Football-Data:', getErrorMessage(e));
+          console.warn('[fixtures] Erro na consulta API-Football:', getErrorMessage(e));
         }
+      } else {
+        console.warn('[fixtures] API_FOOTBALL_KEY não configurado no ambiente.');
       }
 
       // Salvar Cache
@@ -276,6 +307,7 @@ async function startServer() {
         data: normalizedMatches
       };
 
+      console.log('[fixtures] retornando:', normalizedMatches.length, 'partidas');
       res.json({ matches: normalizedMatches });
     } catch (error) {
       console.error('Erro em /api/football/fixtures:', error);
@@ -356,7 +388,7 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
 `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.0-flash',
         contents: sanitizeText(message, 2000),
         config: {
           systemInstruction: systemPrompt,
@@ -406,11 +438,11 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
   });
 
   // -----------------------------------------------------------
-  // Iniciar servidor na porta 3000
+  // Iniciar servidor
   // -----------------------------------------------------------
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`⚡ Orla Bet Server running on http://0.0.0.0:${PORT}`);
-    console.log(`📡 FOOTBALL_DATA_TOKEN configurado: ${Boolean((process.env.FOOTBALL_DATA_TOKEN || process.env.FOOTBALL_DATA_API_KEY)?.trim())}`);
+    console.log(`🔑 API_FOOTBALL_KEY configurado: ${Boolean(process.env.API_FOOTBALL_KEY?.trim())}`);
     console.log(`🤖 GEMINI_API_KEY configurada: ${Boolean(process.env.GEMINI_API_KEY?.trim())}`);
   });
 }

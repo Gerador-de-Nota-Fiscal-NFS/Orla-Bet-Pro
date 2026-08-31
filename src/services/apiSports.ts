@@ -566,7 +566,7 @@ function normalizeMatch(
       new Date().toISOString()
   };
 
-  return normalized as GameFixture;
+  return normalized as unknown as GameFixture;
 }
 
 // -------------------------------------------------------------

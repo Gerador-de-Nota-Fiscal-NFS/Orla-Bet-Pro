@@ -1,26 +1,32 @@
-import React from 'react';
+import React, { Component, type ReactNode, type ErrorInfo } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
 
-  static getDerivedStateFromError(error: Error) {
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public override state: ErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
+
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('🚨 ERRO CAPTURADO:', error, errorInfo);
   }
 
-  render() {
+  public override render() {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-red-50 flex items-center justify-center p-6">

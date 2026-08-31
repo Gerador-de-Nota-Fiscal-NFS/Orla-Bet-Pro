@@ -52,6 +52,7 @@ type NormalizedMatch = {
 // Configurações
 // -------------------------------------------------------------
 
+// ✅ CORREÇÃO: Ler a porta do ambiente da Render, com fallback para 3000
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const FOOTBALL_TIMEZONE = 'America/Sao_Paulo';
 const FOOTBALL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min cache
@@ -66,7 +67,7 @@ const API_FOOTBALL_LIVE_URL = 'https://v3.football.api-sports.io/fixtures?live=a
 // -------------------------------------------------------------
 
 const fixturesCache: Record<string, CacheEntry<NormalizedMatch[]>> = {};
-const liveCache: CacheEntry<NormalizedMatch[]> | null = null;
+let liveCache: CacheEntry<NormalizedMatch[]> | null = null;
 const h2hCache: Record<string, CacheEntry<NormalizedMatch[]>> = {};
 
 // -------------------------------------------------------------
@@ -373,7 +374,7 @@ async function startServer() {
         }
       }
 
-      const newLiveCache: CacheEntry<NormalizedMatch[]> = { timestamp: Date.now(), data: normalizedMatches };
+      liveCache = { timestamp: Date.now(), data: normalizedMatches };
       
       console.log('[live] retornando:', normalizedMatches.length, 'partidas ao vivo');
       res.json({ matches: normalizedMatches, source: 'api', live: true });
@@ -466,7 +467,7 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-1.5-flash', // ✅ CORREÇÃO: Modelo atualizado e estável
         contents: prompt,
         config: {
           temperature: 0.3,
@@ -535,7 +536,7 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
 `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-1.5-flash', // ✅ CORREÇÃO: Modelo atualizado e estável
         contents: sanitizeText(message, 2000),
         config: {
           systemInstruction: systemPrompt,

@@ -49,7 +49,7 @@ function getGenAI(): GoogleGenAI | null {
 
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   
-  // Aceita qualquer chave com comprimento mínimo de 20 caracteres (incluindo formato AQ.)
+  // Aceita chaves com comprimento mínimo (incluindo formato AQ.)
   if (!apiKey || apiKey.length < 20) {
     console.error('❌ ERRO CRÍTICO: GEMINI_API_KEY não está configurada ou é muito curta.');
     return null;
@@ -144,7 +144,7 @@ async function startServer() {
       timestamp: new Date().toISOString(),
       port: PORT,
       geminiConfigured: Boolean(key && key.length >= 20),
-      keyPrefix: key ? key.substring(0, 3) : 'none' // Mostra apenas as 3 primeiras letras para debug (ex: "AQ.")
+      keyPrefix: key ? key.substring(0, 3) : 'none'
     });
   });
 
@@ -165,7 +165,7 @@ async function startServer() {
 JOGOS: ${gamesContext}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-1.5-flash', // ✅ MODELO ESTÁVEL E SUPORTADO
         contents: prompt,
         config: { temperature: 0.3, tools: [{ googleSearch: {} }] }
       });
@@ -200,23 +200,12 @@ Contexto: ${gamesSummary || 'Nenhum'}
 Jogo: ${selectedMatch ? JSON.stringify(selectedMatch) : 'Nenhum'}
 Histórico: ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.text}`).join('\n') : ''}`;
 
-      let response;
-      try {
-        // Tenta o modelo mais compatível primeiro
-        response = await ai.models.generateContent({
-          model: 'gemini-1.5-flash',
-          contents: sanitizeText(message, 2000),
-          config: { systemInstruction: systemPrompt, temperature: 0.7, tools: [{ googleSearch: {} }] }
-        });
-      } catch (modelError: any) {
-        console.warn('⚠️ gemini-1.5-flash falhou, tentando gemini-pro como fallback...');
-        // Fallback para o modelo base mais estável
-        response = await ai.models.generateContent({
-          model: 'gemini-pro',
-          contents: sanitizeText(message, 2000),
-          config: { systemInstruction: systemPrompt, temperature: 0.7 }
-        });
-      }
+      // ✅ REMOVIDO O FALLBACK PARA gemini-pro (que causava o erro 404)
+      const response = await ai.models.generateContent({
+        model: 'gemini-1.5-flash', // ✅ MODELO ESTÁVEL E SUPORTADO
+        contents: sanitizeText(message, 2000),
+        config: { systemInstruction: systemPrompt, temperature: 0.7, tools: [{ googleSearch: {} }] }
+      });
 
       res.json({ reply: response.text || 'Não consegui processar a análise.' });
     } catch (error) {
@@ -255,21 +244,12 @@ CONTEXTO: ${context || 'Nenhum'}`;
 
       console.log('[AI Analyze] Processando:', command);
 
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: 'gemini-1.5-flash',
-          contents: command,
-          config: { systemInstruction: systemPrompt, temperature: 0.2, tools: [{ googleSearch: {} }] }
-        });
-      } catch (modelError: any) {
-        console.warn('⚠️ gemini-1.5-flash falhou, tentando gemini-pro como fallback...');
-        response = await ai.models.generateContent({
-          model: 'gemini-pro',
-          contents: command,
-          config: { systemInstruction: systemPrompt, temperature: 0.2 }
-        });
-      }
+      // ✅ REMOVIDO O FALLBACK PARA gemini-pro (que causava o erro 404)
+      const response = await ai.models.generateContent({
+        model: 'gemini-1.5-flash', // ✅ MODELO ESTÁVEL E SUPORTADO
+        contents: command,
+        config: { systemInstruction: systemPrompt, temperature: 0.2, tools: [{ googleSearch: {} }] }
+      });
 
       const reply = response.text || '';
       
@@ -315,11 +295,17 @@ CONTEXTO: ${context || 'Nenhum'}`;
     app.get('*', (_req: Request, res: Response) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
+  // -----------------------------------------------------------
+  // Tratamento de Erros Global
+  // -----------------------------------------------------------
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error('Unhandled server error:', err);
     if (!res.headersSent) res.status(500).json({ error: 'Erro interno.', message: getErrorMessage(err) });
   });
 
+  // -----------------------------------------------------------
+  // Iniciar servidor
+  // -----------------------------------------------------------
   app.listen(PORT, '0.0.0.0', () => {
     const key = process.env.GEMINI_API_KEY?.trim();
     console.log(`⚡ ZAP BET IA Server running on http://0.0.0.0:${PORT}`);

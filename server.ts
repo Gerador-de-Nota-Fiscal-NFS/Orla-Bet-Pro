@@ -52,7 +52,7 @@ type NormalizedMatch = {
 // Configurações
 // -------------------------------------------------------------
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = 3000;
 const FOOTBALL_TIMEZONE = 'America/Sao_Paulo';
 const FOOTBALL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min cache
 const LIVE_CACHE_TTL_MS = 30 * 1000; // 30s cache para jogos ao vivo
@@ -466,7 +466,7 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash-latest',
+        model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
           temperature: 0.3,
@@ -536,7 +536,7 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
 `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash-latest',
+        model: 'gemini-2.5-flash',
         contents: sanitizeText(message, 2000),
         config: {
           systemInstruction: systemPrompt,

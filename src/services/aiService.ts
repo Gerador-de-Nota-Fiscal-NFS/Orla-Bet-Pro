@@ -3,7 +3,8 @@ export interface AIAnalysisRequest {
   chatHistory?: { sender: 'user' | 'bot'; text: string }[];
 }
 
-export async function askZapBetAI(request: AIAnalysisRequest): Promise<string> {
+// O nome deve ser askOrlaAI para bater com o import no OrlaAIChat.tsx
+export async function askOrlaAI(request: AIAnalysisRequest): Promise<string> {
   const { message, chatHistory } = request;
 
   try {
@@ -12,7 +13,7 @@ export async function askZapBetAI(request: AIAnalysisRequest): Promise<string> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
-        chatHistory: chatHistory?.slice(-6)
+        chatHistory: chatHistory?.slice(-6) // Mantém o contexto das últimas 6 mensagens
       })
     });
 
@@ -23,7 +24,7 @@ export async function askZapBetAI(request: AIAnalysisRequest): Promise<string> {
       }
     } else {
       const errorText = await res.text();
-      console.error('[AI Service]  Erro na requisição:', res.status, errorText);
+      console.error('[AI Service] ❌ Erro na requisição:', res.status, errorText);
     }
   } catch (err) {
     console.error('[AI Service] ❌ Erro de rede ao chamar a IA:', err);

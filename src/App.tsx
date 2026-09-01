@@ -164,10 +164,10 @@ export default function App() {
               </div>
             ) : (
               <div className="flex-1 bg-slate-900/50 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
+                {/* ✅ CORREÇÃO: Prop 'games' removida daqui */}
                 <OrlaAIChat 
                   isOpen={true} 
                   onClose={() => setIsChatOpen(false)} 
-                  games={[]} 
                   onShowToast={showToast} 
                 />
               </div>

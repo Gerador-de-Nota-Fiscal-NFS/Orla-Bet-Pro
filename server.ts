@@ -52,7 +52,6 @@ type NormalizedMatch = {
 // Configurações
 // -------------------------------------------------------------
 
-// ✅ CORREÇÃO: Ler a porta do ambiente da Render, com fallback para 3000
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const FOOTBALL_TIMEZONE = 'America/Sao_Paulo';
 const FOOTBALL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min cache
@@ -410,7 +409,7 @@ async function startServer() {
   });
 
   // -----------------------------------------------------------
-  // 🌟 NOVO ENDPOINT: Gerador de Bilhetes com IA + Google Search
+  // 🌟 ENDPOINT: Gerador de Bilhetes com IA + Google Search
   // -----------------------------------------------------------
   app.post('/api/ai/ticket', async (req: Request, res: Response) => {
     try {
@@ -467,11 +466,11 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash', // ✅ CORREÇÃO: Modelo atualizado e estável
+        model: 'gemini-1.5-flash',
         contents: prompt,
         config: {
           temperature: 0.3,
-          tools: [{ googleSearch: {} }] // Ativa a pesquisa na internet em tempo real
+          tools: [{ googleSearch: {} }]
         }
       });
 
@@ -493,7 +492,7 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
   });
 
   // -----------------------------------------------------------
-  // Rota de IA Esportiva (Chat Gemini)
+  // 🌟 Rota de IA Esportiva (Chat Gemini) - COM PESQUISA NA INTERNET
   // -----------------------------------------------------------
   app.post('/api/ai/chat', async (req: Request, res: Response) => {
     try {
@@ -519,11 +518,20 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
 Especialista em futebol nacional e internacional.
 Seu tom é profissional, analítico, seguro, ético e sempre focado em gestão de risco consciente e estatística de valor esperado (+EV).
 
+🔥 **RECURSO ESPECIAL:** Você tem acesso ao Google Search em tempo real! Use para pesquisar:
+- Notícias de última hora sobre os times
+- Lesões e suspensões de jogadores
+- Forma recente dos times
+- Confrontos diretos históricos
+- Condições climáticas do jogo
+- Escalações prováveis
+
 Diretrizes:
 1. Responda em Português do Brasil (PT-BR).
 2. Utilize Markdown limpo com tópicos e formatação clara.
-3. Analise probabilidades, expectativa de gols (xG), ambas marcam e sugestões fundamentadas.
-4. Reforce sempre a gestão de banca e o jogo responsável.
+3. **SEMPRE que possível, cite fontes reais das suas pesquisas** (ex: "segundo o GE, o jogador X está lesionado").
+4. Analise probabilidades, expectativa de gols (xG), ambas marcam e sugestões fundamentadas.
+5. Reforce sempre a gestão de banca e o jogo responsável.
 
 Contexto dos Jogos:
 ${gamesSummary || 'Nenhum jogo filtrado.'}
@@ -536,11 +544,12 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
 `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash', // ✅ CORREÇÃO: Modelo atualizado e estável
+        model: 'gemini-1.5-flash',
         contents: sanitizeText(message, 2000),
         config: {
           systemInstruction: systemPrompt,
-          temperature: 0.7
+          temperature: 0.7,
+          tools: [{ googleSearch: {} }] // ✅ ATIVA A PESQUISA NA INTERNET!
         }
       });
 

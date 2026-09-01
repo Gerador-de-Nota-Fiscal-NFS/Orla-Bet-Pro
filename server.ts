@@ -49,7 +49,6 @@ function getGenAI(): GoogleGenAI | null {
 
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   
-  // Aceita chaves com comprimento mínimo (incluindo formato AQ.)
   if (!apiKey || apiKey.length < 20) {
     console.error('❌ ERRO CRÍTICO: GEMINI_API_KEY não está configurada ou é muito curta.');
     return null;
@@ -164,11 +163,21 @@ async function startServer() {
 { "ticketTitle": "Bilhete Inteligente", "totalOdd": 0.00, "confidenceLevel": "Alto/Médio/Baixo", "selections": [{ "game": "A vs B", "market": "Mercado", "selection": "Seleção", "odd": 0.00, "confidence": "Alto/Médio/Baixo", "justification": "Motivo", "source": "Fonte" }], "responsibleGamingWarning": "Aviso de jogo responsável" }
 JOGOS: ${gamesContext}`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash', // ✅ MODELO ESTÁVEL E SUPORTADO
-        contents: prompt,
-        config: { temperature: 0.3, tools: [{ googleSearch: {} }] }
-      });
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-2.0-flash', // ✅ MODELO MAIS RECENTE E ESTÁVEL (2025)
+          contents: prompt,
+          config: { temperature: 0.3, tools: [{ googleSearch: {} }] }
+        });
+      } catch (modelError: any) {
+        console.warn('⚠️ gemini-2.0-flash falhou, tentando gemini-2.5-flash...');
+        response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash', // ✅ FALLBACK PARA VERSÃO BETA
+          contents: prompt,
+          config: { temperature: 0.3, tools: [{ googleSearch: {} }] }
+        });
+      }
 
       const reply = response.text || '';
       try {
@@ -200,12 +209,21 @@ Contexto: ${gamesSummary || 'Nenhum'}
 Jogo: ${selectedMatch ? JSON.stringify(selectedMatch) : 'Nenhum'}
 Histórico: ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.text}`).join('\n') : ''}`;
 
-      // ✅ REMOVIDO O FALLBACK PARA gemini-pro (que causava o erro 404)
-      const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash', // ✅ MODELO ESTÁVEL E SUPORTADO
-        contents: sanitizeText(message, 2000),
-        config: { systemInstruction: systemPrompt, temperature: 0.7, tools: [{ googleSearch: {} }] }
-      });
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-2.0-flash', // ✅ MODELO MAIS RECENTE E ESTÁVEL (2025)
+          contents: sanitizeText(message, 2000),
+          config: { systemInstruction: systemPrompt, temperature: 0.7, tools: [{ googleSearch: {} }] }
+        });
+      } catch (modelError: any) {
+        console.warn('⚠️ gemini-2.0-flash falhou, tentando gemini-2.5-flash...');
+        response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash', // ✅ FALLBACK PARA VERSÃO BETA
+          contents: sanitizeText(message, 2000),
+          config: { systemInstruction: systemPrompt, temperature: 0.7, tools: [{ googleSearch: {} }] }
+        });
+      }
 
       res.json({ reply: response.text || 'Não consegui processar a análise.' });
     } catch (error) {
@@ -244,12 +262,21 @@ CONTEXTO: ${context || 'Nenhum'}`;
 
       console.log('[AI Analyze] Processando:', command);
 
-      // ✅ REMOVIDO O FALLBACK PARA gemini-pro (que causava o erro 404)
-      const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash', // ✅ MODELO ESTÁVEL E SUPORTADO
-        contents: command,
-        config: { systemInstruction: systemPrompt, temperature: 0.2, tools: [{ googleSearch: {} }] }
-      });
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-2.0-flash', // ✅ MODELO MAIS RECENTE E ESTÁVEL (2025)
+          contents: command,
+          config: { systemInstruction: systemPrompt, temperature: 0.2, tools: [{ googleSearch: {} }] }
+        });
+      } catch (modelError: any) {
+        console.warn('⚠️ gemini-2.0-flash falhou, tentando gemini-2.5-flash...');
+        response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash', // ✅ FALLBACK PARA VERSÃO BETA
+          contents: command,
+          config: { systemInstruction: systemPrompt, temperature: 0.2, tools: [{ googleSearch: {} }] }
+        });
+      }
 
       const reply = response.text || '';
       

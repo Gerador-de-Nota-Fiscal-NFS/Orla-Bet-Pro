@@ -466,7 +466,7 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash-latest', // ✅ CORREÇÃO: Adicionado sufixo -latest
+        model: 'gemini-1.5-flash-latest',
         contents: prompt,
         config: {
           temperature: 0.3,
@@ -506,11 +506,7 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
 
       if (!ai) {
         return res.json({
-          reply: `🤖 **Orla IA (Assistente Esportivo)**\n\nRecebi sua análise sobre: "${sanitizeText(message, 100)}".\n\n` +
-            `⚽ **Princípios de Gestão de Risco:**\n` +
-            `• Mantenha stake controlada (1% a 2% da banca por entrada).\n` +
-            `• Priorize mercados de valor (+EV).\n\n` +
-            `💡 *Configure a chave GEMINI_API_KEY nas variáveis de ambiente para análises aprofundadas.*`
+          reply: `🤖 **Orla IA (Modo Limitado)**\n\nA chave da IA não está configurada no servidor. Por favor, contate o administrador.`
         });
       }
 
@@ -518,13 +514,9 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
 Especialista em futebol nacional e internacional.
 Seu tom é profissional, analítico, seguro, ético e sempre focado em gestão de risco consciente e estatística de valor esperado (+EV).
 
-🔥 **RECURSO ESPECIAL:** Você tem acesso ao Google Search em tempo real! Use para pesquisar:
-- Notícias de última hora sobre os times
-- Lesões e suspensões de jogadores
-- Forma recente dos times
-- Confrontos diretos históricos
-- Condições climáticas do jogo
-- Escalações prováveis
+🔥 **RECURSO ESPECIAL:** Você tem acesso ao Google Search em tempo real! 
+- Se o usuário perguntar sobre um time, jogo ou campeonato, USE O GOOGLE SEARCH para encontrar notícias reais, lesões, forma recente e escalações.
+- Se não houver jogos no contexto abaixo, NÃO diga que não tem dados. Em vez disso, pesquise na internet sobre o time ou assunto que o usuário mencionou e responda com base nas informações reais encontradas.
 
 Diretrizes:
 1. Responda em Português do Brasil (PT-BR).
@@ -533,8 +525,8 @@ Diretrizes:
 4. Analise probabilidades, expectativa de gols (xG), ambas marcam e sugestões fundamentadas.
 5. Reforce sempre a gestão de banca e o jogo responsável.
 
-Contexto dos Jogos:
-${gamesSummary || 'Nenhum jogo filtrado.'}
+Contexto dos Jogos do Sistema (pode estar vazio):
+${gamesSummary || 'Nenhum jogo carregado no momento. Use o Google Search para responder à pergunta do usuário sobre qualquer time ou campeonato.'}
 
 Jogo Selecionado:
 ${selectedMatch ? JSON.stringify(selectedMatch, null, 2) : 'Nenhum'}
@@ -544,7 +536,7 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
 `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash-latest', // ✅ CORREÇÃO: Adicionado sufixo -latest
+        model: 'gemini-1.5-flash-latest',
         contents: sanitizeText(message, 2000),
         config: {
           systemInstruction: systemPrompt,

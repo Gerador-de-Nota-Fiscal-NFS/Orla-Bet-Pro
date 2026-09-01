@@ -466,7 +466,7 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-1.5-flash-latest', // ✅ CORREÇÃO: Adicionado sufixo -latest
         contents: prompt,
         config: {
           temperature: 0.3,
@@ -544,7 +544,7 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
 `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-1.5-flash-latest', // ✅ CORREÇÃO: Adicionado sufixo -latest
         contents: sanitizeText(message, 2000),
         config: {
           systemInstruction: systemPrompt,

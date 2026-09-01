@@ -7,43 +7,13 @@ import { GoogleGenAI } from '@google/genai';
 // Tipos
 // -------------------------------------------------------------
 
-type CacheEntry<T> = {
-  timestamp: number;
-  data: T;
-};
+type CacheEntry<T> = { timestamp: number; data: T };
 
 type NormalizedMatch = {
-  fixture: {
-    id: number;
-    date: string;
-    timestamp: number | null;
-    timezone: string;
-    status: {
-      long: string;
-      short: string;
-      elapsed: number | null;
-    };
-  };
-  league: {
-    id?: number;
-    name: string;
-  };
-  teams: {
-    home: {
-      id?: number;
-      name: string;
-      logo?: string;
-    };
-    away: {
-      id?: number;
-      name: string;
-      logo?: string;
-    };
-  };
-  goals: {
-    home: number | null;
-    away: number | null;
-  };
+  fixture: { id: number; date: string; timestamp: number | null; timezone: string; status: { long: string; short: string; elapsed: number | null } };
+  league: { id?: number; name: string };
+  teams: { home: { id?: number; name: string; logo?: string }; away: { id?: number; name: string; logo?: string } };
+  goals: { home: number | null; away: number | null };
   source: string;
   lastUpdatedAt: string;
 };
@@ -53,7 +23,6 @@ type NormalizedMatch = {
 // -------------------------------------------------------------
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const FOOTBALL_TIMEZONE = 'America/Sao_Paulo';
 const FOOTBALL_CACHE_TTL_MS = 5 * 60 * 1000;
 const LIVE_CACHE_TTL_MS = 30 * 1000;
 const REQUEST_TIMEOUT_MS = 15 * 1000;
@@ -79,13 +48,19 @@ function getGenAI(): GoogleGenAI | null {
   if (aiClient) return aiClient;
 
   const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) return null;
+  
+  // Aceita qualquer chave com comprimento mínimo de 20 caracteres (incluindo formato AQ.)
+  if (!apiKey || apiKey.length < 20) {
+    console.error('❌ ERRO CRÍTICO: GEMINI_API_KEY não está configurada ou é muito curta.');
+    return null;
+  }
 
   try {
     aiClient = new GoogleGenAI({
       apiKey,
       httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
     });
+    console.log('✅ Gemini inicializado com sucesso.');
     return aiClient;
   } catch (error) {
     console.error('Falha ao inicializar o Gemini:', getErrorMessage(error));
@@ -128,9 +103,7 @@ function normalizeMatch(item: any): NormalizedMatch | null {
   if (!item || !item.fixture || !item.teams) return null;
   return {
     fixture: {
-      id: item.fixture.id,
-      date: item.fixture.date,
-      timestamp: item.fixture.timestamp || null,
+      id: item.fixture.id, date: item.fixture.date, timestamp: item.fixture.timestamp || null,
       timezone: item.fixture.timezone || 'UTC',
       status: { long: item.fixture.status?.long || 'Not Started', short: item.fixture.status?.short || 'NS', elapsed: item.fixture.status?.elapsed || null }
     },
@@ -163,13 +136,15 @@ async function startServer() {
   });
 
   app.get('/api/health', (_req: Request, res: Response) => {
+    const key = process.env.GEMINI_API_KEY?.trim();
     res.json({
       status: 'ok',
       service: 'ZAP BET IA Backend',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       port: PORT,
-      geminiConfigured: Boolean(process.env.GEMINI_API_KEY?.trim())
+      geminiConfigured: Boolean(key && key.length >= 20),
+      keyPrefix: key ? key.substring(0, 3) : 'none' // Mostra apenas as 3 primeiras letras para debug (ex: "AQ.")
     });
   });
 
@@ -179,29 +154,18 @@ async function startServer() {
   app.post('/api/ai/ticket', async (req: Request, res: Response) => {
     try {
       const { matches } = req.body;
-      if (!matches || !Array.isArray(matches) || matches.length === 0) {
-        return res.status(400).json({ error: 'Nenhum jogo fornecido.' });
-      }
+      if (!matches || !Array.isArray(matches) || matches.length === 0) return res.status(400).json({ error: 'Nenhum jogo fornecido.' });
 
       const ai = getGenAI();
-      if (!ai) return res.status(503).json({ error: 'IA não configurada.' });
+      if (!ai) return res.status(503).json({ error: 'IA não configurada. Verifique a GEMINI_API_KEY.' });
 
-      const gamesContext = matches.map((m: NormalizedMatch, i: number) => 
-        `${i + 1}. ${m.teams.home.name} vs ${m.teams.away.name} | Liga: ${m.league.name}`
-      ).join('\n');
-
+      const gamesContext = matches.map((m: NormalizedMatch, i: number) => `${i + 1}. ${m.teams.home.name} vs ${m.teams.away.name} | Liga: ${m.league.name}`).join('\n');
       const prompt = `Analise estes jogos com Google Search e retorne JSON estrito (sem markdown):
-{
-  "ticketTitle": "Bilhete Inteligente",
-  "totalOdd": 0.00,
-  "confidenceLevel": "Alto/Médio/Baixo",
-  "selections": [{ "game": "A vs B", "market": "Mercado", "selection": "Seleção", "odd": 0.00, "confidence": "Alto/Médio/Baixo", "justification": "Motivo", "source": "Fonte" }],
-  "responsibleGamingWarning": "Aviso de jogo responsável"
-}
+{ "ticketTitle": "Bilhete Inteligente", "totalOdd": 0.00, "confidenceLevel": "Alto/Médio/Baixo", "selections": [{ "game": "A vs B", "market": "Mercado", "selection": "Seleção", "odd": 0.00, "confidence": "Alto/Médio/Baixo", "justification": "Motivo", "source": "Fonte" }], "responsibleGamingWarning": "Aviso de jogo responsável" }
 JOGOS: ${gamesContext}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-pro', // ✅ MODELO PRO (100% compatível e estável)
+        model: 'gemini-1.5-flash',
         contents: prompt,
         config: { temperature: 0.3, tools: [{ googleSearch: {} }] }
       });
@@ -227,25 +191,36 @@ JOGOS: ${gamesContext}`;
       if (!message || typeof message !== 'string') return res.status(400).json({ error: 'Mensagem inválida.' });
 
       const ai = getGenAI();
-      if (!ai) return res.json({ reply: '🤖 **ZAP BET IA**\n\nChave da IA não configurada no servidor.' });
+      if (!ai) return res.json({ reply: '🤖 **ZAP BET IA**\n\nErro: Chave da IA inválida ou não configurada.' });
 
       const systemPrompt = `Você é a ZAP BET IA, especialista em futebol com Google Search em tempo real.
 NUNCA invente dados. Use APENAS informações reais encontradas via busca.
-Responda em PT-BR, com Markdown limpo, citando fontes reais.
-Foque em gestão de risco e +EV.
-
+Responda em PT-BR, com Markdown limpo, citando fontes reais. Foque em gestão de risco e +EV.
 Contexto: ${gamesSummary || 'Nenhum'}
 Jogo: ${selectedMatch ? JSON.stringify(selectedMatch) : 'Nenhum'}
 Histórico: ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.text}`).join('\n') : ''}`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-1.5-pro', // ✅ MODELO PRO (100% compatível e estável)
-        contents: sanitizeText(message, 2000),
-        config: { systemInstruction: systemPrompt, temperature: 0.7, tools: [{ googleSearch: {} }] }
-      });
+      let response;
+      try {
+        // Tenta o modelo mais compatível primeiro
+        response = await ai.models.generateContent({
+          model: 'gemini-1.5-flash',
+          contents: sanitizeText(message, 2000),
+          config: { systemInstruction: systemPrompt, temperature: 0.7, tools: [{ googleSearch: {} }] }
+        });
+      } catch (modelError: any) {
+        console.warn('⚠️ gemini-1.5-flash falhou, tentando gemini-pro como fallback...');
+        // Fallback para o modelo base mais estável
+        response = await ai.models.generateContent({
+          model: 'gemini-pro',
+          contents: sanitizeText(message, 2000),
+          config: { systemInstruction: systemPrompt, temperature: 0.7 }
+        });
+      }
 
       res.json({ reply: response.text || 'Não consegui processar a análise.' });
     } catch (error) {
+      console.error('Erro no processamento Gemini IA:', error);
       res.status(500).json({ error: 'Erro ao gerar resposta.', details: getErrorMessage(error) });
     }
   });
@@ -280,11 +255,21 @@ CONTEXTO: ${context || 'Nenhum'}`;
 
       console.log('[AI Analyze] Processando:', command);
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-1.5-pro', // ✅ MODELO PRO (100% compatível e estável)
-        contents: command,
-        config: { systemInstruction: systemPrompt, temperature: 0.2, tools: [{ googleSearch: {} }] }
-      });
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-1.5-flash',
+          contents: command,
+          config: { systemInstruction: systemPrompt, temperature: 0.2, tools: [{ googleSearch: {} }] }
+        });
+      } catch (modelError: any) {
+        console.warn('⚠️ gemini-1.5-flash falhou, tentando gemini-pro como fallback...');
+        response = await ai.models.generateContent({
+          model: 'gemini-pro',
+          contents: command,
+          config: { systemInstruction: systemPrompt, temperature: 0.2 }
+        });
+      }
 
       const reply = response.text || '';
       
@@ -336,8 +321,9 @@ CONTEXTO: ${context || 'Nenhum'}`;
   });
 
   app.listen(PORT, '0.0.0.0', () => {
+    const key = process.env.GEMINI_API_KEY?.trim();
     console.log(`⚡ ZAP BET IA Server running on http://0.0.0.0:${PORT}`);
-    console.log(`🤖 GEMINI_API_KEY configurada: ${Boolean(process.env.GEMINI_API_KEY?.trim())}`);
+    console.log(`🤖 GEMINI_API_KEY configurada: ${Boolean(key && key.length >= 20)} (Prefixo: ${key ? key.substring(0, 3) : 'none'})`);
   });
 }
 

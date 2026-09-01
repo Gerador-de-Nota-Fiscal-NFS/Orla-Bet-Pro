@@ -10,11 +10,9 @@ import {
   MessageSquare, 
   ShieldCheck, 
   Timer, 
-  Flame, 
-  TrendingUp, 
   ArrowRight,
-  HelpCircle,
-  KeyRound
+  KeyRound,
+  Brain
 } from 'lucide-react';
 import { Subscriber } from '../types';
 import { 
@@ -24,7 +22,6 @@ import {
   getWhatsAppPaymentLink,
   getWhatsAppSupportLink,
   ADMIN_WHATSAPP_DISPLAY,
-  ADMIN_WHATSAPP_NUMBER,
   SUBSCRIPTION_PLANS 
 } from '../services/firebase';
 
@@ -44,11 +41,11 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [plan, setPlan] = useState('Plano Avançado (Pro)');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const currentPlanObj = SUBSCRIPTION_PLANS.find(p => p.name === plan) || SUBSCRIPTION_PLANS[1];
+  // Agora temos apenas um plano, pegamos o primeiro (e único) do array
+  const currentPlanObj = SUBSCRIPTION_PLANS[0];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,9 +58,10 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
         onSuccess(user);
         onShowToast(`Bem-vindo de volta, ${user.name}!`, 'success');
       } else {
-        const user = await registerSubscriber(email, password, name, plan, phone);
+        // Atualizado para a nova assinatura do firebase.ts (sem o parâmetro de plano)
+        const user = await registerSubscriber(email, password, name, phone);
         onSuccess(user);
-        onShowToast(`Conta criada! Você tem 15 minutos de teste gratuito liberados!`, 'success');
+        onShowToast(`Conta criada! Você tem 24 horas de teste gratuito liberadas!`, 'success');
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Falha ao autenticar.');
@@ -93,10 +91,12 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
       <header className="w-full border-b border-white/10 bg-slate-950/70 backdrop-blur-md px-4 py-3 sticky top-0 z-40">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">⚽</span>
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-purple-600 flex items-center justify-center">
+              <Brain className="w-5 h-5 text-white" />
+            </div>
             <div className="flex flex-col">
               <span className="font-black text-lg tracking-tight text-white flex items-center gap-1.5">
-                ORLA BET <span className="bg-gradient-to-r from-cyan-400 to-blue-500 text-transparent bg-clip-text font-black">PRO</span>
+                ZAP BET <span className="bg-gradient-to-r from-cyan-400 to-purple-500 text-transparent bg-clip-text font-black">IA</span>
               </span>
               <span className="text-[10px] text-cyan-300 font-bold uppercase tracking-wider -mt-1">
                 Inteligência Artificial Esportiva
@@ -130,28 +130,28 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
       {/* Main Hero & Auth Section */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8 md:py-12 flex flex-col items-center justify-center">
         
-        {/* Big Welcome Headline Requested by User */}
+        {/* Big Welcome Headline */}
         <div className="text-center max-w-3xl mb-8 md:mb-12 animate-fadeIn">
-          <div className="inline-flex items-center gap-2 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 px-4 py-1.5 rounded-full text-cyan-300 text-xs font-bold uppercase tracking-wider mb-4 shadow-inner">
+          <div className="inline-flex items-center gap-2 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 px-4 py-1.5 rounded-full text-cyan-300 text-xs font-bold uppercase tracking-wider mb-4 shadow-inner">
             <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
-            <span>Plataforma Oficial de Análises & Palpites</span>
+            <span>Central Premium de Análises com IA</span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-tight sm:leading-tight">
-            Boas-vindas à plataforma que vai{' '}
-            <span className="bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-400 text-transparent bg-clip-text">
-              mudar o jeito que você aposta!
+            Boas-vindas à{' '}
+            <span className="bg-gradient-to-r from-cyan-400 via-purple-400 to-cyan-400 text-transparent bg-clip-text">
+              ZAP BET IA
             </span>
           </h1>
 
           <p className="mt-4 text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
-            Palpites diários calculados por <strong>Inteligência Artificial</strong>, bilhetes prontos com alta probabilidade matemática e cobertura completa de todos os campeonatos do Brasil e do mundo.
+            Análises táticas, comparação de times e interpretação de odds com <strong>Inteligência Artificial</strong> e Google Search em tempo real.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-3 mt-4 text-xs font-bold text-slate-300">
             <span className="flex items-center gap-1.5 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              15 Minutos de Teste Grátis
+              24 Horas de Teste Grátis
             </span>
             <span className="flex items-center gap-1.5 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
@@ -167,97 +167,84 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
         {/* Auth Card & Plan Presentation Container */}
         <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* Left Column: Feature Highlights & Plans */}
+          {/* Left Column: Feature Highlights & Single Plan */}
           <div className="lg:col-span-6 space-y-6 order-2 lg:order-1">
             
             {/* Quick Benefits Card */}
             <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-md">
               <h3 className="text-base font-black text-white uppercase tracking-tight flex items-center gap-2 mb-4">
-                <Flame className="w-5 h-5 text-orange-400" />
-                O que você encontra na Orla Bet Pro:
+                <Sparkles className="w-5 h-5 text-purple-400" />
+                O que você encontra na ZAP BET IA:
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div className="p-3 bg-white/5 rounded-2xl border border-white/5">
-                  <div className="font-bold text-cyan-300 mb-1">🤖 Orla IA Universal</div>
+                  <div className="font-bold text-cyan-300 mb-1">🧠 Análise de Confrontos</div>
                   <p className="text-slate-400 leading-relaxed">
-                    Chat com IA especialista em futebol analisando qualquer confronto em segundos.
+                    A IA pesquisa notícias, lesões e forma recente para analisar qualquer jogo que você pedir.
                   </p>
                 </div>
 
                 <div className="p-3 bg-white/5 rounded-2xl border border-white/5">
-                  <div className="font-bold text-cyan-300 mb-1">🎯 Bilhetes Prontos Diários</div>
+                  <div className="font-bold text-cyan-300 mb-1">📊 Interpretação de Odds</div>
                   <p className="text-slate-400 leading-relaxed">
-                    Múltiplas calculadas com probabilidade combinada e alta taxa de assertividade.
+                    Cole as odds e a IA calcula o valor esperado (+EV) e a probabilidade implícita.
                   </p>
                 </div>
 
                 <div className="p-3 bg-white/5 rounded-2xl border border-white/5">
-                  <div className="font-bold text-cyan-300 mb-1">🏆 Todas as Ligas</div>
+                  <div className="font-bold text-cyan-300 mb-1">⚖️ Comparação de Times</div>
                   <p className="text-slate-400 leading-relaxed">
-                    Brasileirão, Copa do Brasil, Libertadores, Champions League, Premier League e mais.
+                    Histórico de confrontos (H2H), estatísticas de ataque/defesa e tendências táticas.
                   </p>
                 </div>
 
                 <div className="p-3 bg-white/5 rounded-2xl border border-white/5">
-                  <div className="font-bold text-cyan-300 mb-1">⚡ Odds & Estatísticas Ao Vivo</div>
+                  <div className="font-bold text-cyan-300 mb-1">💬 Chat Ilimitado</div>
                   <p className="text-slate-400 leading-relaxed">
-                    Acompanhamento em tempo real das melhores cotações do mercado.
+                    Tire dúvidas sobre gestão de banca, mercados e estratégias com respostas em tempo real.
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Plans Mini Grid */}
+            {/* Single Plan Card */}
             <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-md">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                  Nossos Planos de Acesso
+                  Plano de Acesso
                 </h3>
                 <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/20 px-2.5 py-0.5 rounded-full">
                   PIX Direto
                 </span>
               </div>
 
-              <div className="space-y-3">
-                {SUBSCRIPTION_PLANS.map(p => (
-                  <div 
-                    key={p.id}
-                    className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 transition ${
-                      p.popular 
-                        ? 'bg-gradient-to-r from-cyan-950/60 to-blue-950/60 border-cyan-500/50 shadow-md' 
-                        : 'bg-white/5 border-white/5'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-sm text-white">{p.name}</span>
-                        {p.badge && (
-                          <span className="bg-cyan-500 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full uppercase">
-                            {p.badge}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[11px] text-slate-400 block mt-0.5">
-                        {p.features[0]} • {p.features[1]}
-                      </span>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <div className="font-black text-base text-cyan-300">{p.formattedPrice}</div>
-                      <a
-                        href={getWhatsAppPaymentLink(p.name, p.formattedPrice)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 hover:text-emerald-300 uppercase mt-0.5 transition"
-                      >
-                        <MessageSquare className="w-3 h-3" />
-                        <span>Chamar PIX</span>
-                      </a>
-                    </div>
+              <div className="p-4 rounded-2xl border border-cyan-500/50 bg-gradient-to-r from-cyan-950/60 to-purple-950/60 shadow-md flex items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-sm text-white">{currentPlanObj.name}</span>
+                    <span className="bg-cyan-500 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full uppercase">
+                      Acesso Total
+                    </span>
                   </div>
-                ))}
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    {currentPlanObj.features[0]} • {currentPlanObj.features[1]}
+                  </span>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <div className="font-black text-base text-cyan-300">{currentPlanObj.formattedPrice}</div>
+                  <a
+                    href={getWhatsAppPaymentLink(currentPlanObj.name, currentPlanObj.formattedPrice)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 hover:text-emerald-300 uppercase mt-0.5 transition"
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    <span>Chamar PIX</span>
+                  </a>
+                </div>
               </div>
             </div>
 
@@ -274,17 +261,17 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                   onClick={() => { setTab('register'); setErrorMsg(''); }}
                   className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition ${
                     tab === 'register' 
-                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md' 
+                      ? 'bg-gradient-to-r from-cyan-600 to-purple-600 text-white shadow-md' 
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  🎉 Criar Conta (15 min Grátis)
+                  🎉 Criar Conta (24h Grátis)
                 </button>
                 <button
                   onClick={() => { setTab('login'); setErrorMsg(''); }}
                   className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition ${
                     tab === 'login' 
-                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md' 
+                      ? 'bg-gradient-to-r from-cyan-600 to-purple-600 text-white shadow-md' 
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -302,7 +289,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
 
               {/* Free Trial Banner in Register Mode */}
               {tab === 'register' && (
-                <div className="mb-5 p-3.5 bg-gradient-to-r from-cyan-50 to-blue-50 border border-cyan-200 rounded-2xl flex items-start gap-3">
+                <div className="mb-5 p-3.5 bg-gradient-to-r from-cyan-50 to-purple-50 border border-cyan-200 rounded-2xl flex items-start gap-3">
                   <div className="w-8 h-8 rounded-xl bg-cyan-600 text-white flex items-center justify-center shrink-0 shadow-sm">
                     <Timer className="w-4 h-4" />
                   </div>
@@ -311,7 +298,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                       Acesso Imediato de Degustação
                     </span>
                     <p className="text-[11px] text-cyan-800 leading-tight mt-0.5">
-                      Crie sua conta e ganhe <strong>15 minutos de teste gratuito</strong> para consultar todos os palpites do dia!
+                      Crie sua conta e ganhe <strong>24 horas de teste gratuito</strong> para usar todas as ferramentas da IA!
                     </p>
                   </div>
                 </div>
@@ -325,24 +312,12 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                 className="w-full bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold py-3.5 px-4 rounded-2xl text-xs border border-slate-200 shadow-sm hover:shadow transition flex items-center justify-center gap-3 disabled:opacity-50 mb-5"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                  />
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                 </svg>
-                <span>{tab === 'register' ? 'Criar Conta com Google (1-Clique)' : 'Entrar com Google'}</span>
+                <span>{tab === 'register' ? 'Criar Conta com Google' : 'Entrar com Google'}</span>
               </button>
 
               <div className="flex items-center gap-3 my-5">
@@ -388,23 +363,6 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                         />
                       </div>
                     </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                        Escolha seu Plano Desejado
-                      </label>
-                      <select
-                        value={plan}
-                        onChange={e => setPlan(e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white transition"
-                      >
-                        {SUBSCRIPTION_PLANS.map(p => (
-                          <option key={p.id} value={p.name}>
-                            {p.name} — {p.formattedPrice}/mês ({p.palpitesCount} {p.palpitesCount === 1 ? 'palpite' : 'palpites'}/dia)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
                   </>
                 )}
 
@@ -446,13 +404,13 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3.5 px-4 bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-700 hover:to-indigo-700 text-white font-black rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-cyan-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 hover:scale-[1.01]"
+                  className="w-full py-3.5 px-4 bg-gradient-to-r from-cyan-600 via-purple-600 to-cyan-600 hover:from-cyan-700 hover:to-purple-700 text-white font-black rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-cyan-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 hover:scale-[1.01]"
                 >
                   {loading ? (
                     <span>Processando...</span>
                   ) : (
                     <>
-                      <span>{tab === 'register' ? 'Iniciar Teste Grátis de 15 Minutos' : 'Acessar Minha Conta'}</span>
+                      <span>{tab === 'register' ? 'Iniciar Teste Grátis de 24 Horas' : 'Acessar Minha Conta'}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -463,7 +421,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
               {/* Direct WhatsApp Callout */}
               <div className="mt-6 pt-5 border-t border-slate-100 text-center">
                 <p className="text-xs text-slate-500">
-                  Deseja ativar seu plano diretamente com o administrador?
+                  Deseja ativar o Plano Avançado diretamente com o administrador?
                 </p>
                 <a
                   href={getWhatsAppPaymentLink(currentPlanObj.name, currentPlanObj.formattedPrice, name || undefined)}
@@ -472,7 +430,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                   className="mt-2 inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-sm"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Falar com o Admin no WhatsApp ({ADMIN_WHATSAPP_DISPLAY})</span>
+                  <span>Falar com o Admin ({ADMIN_WHATSAPP_DISPLAY})</span>
                 </a>
               </div>
 
@@ -488,10 +446,10 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
       <footer className="w-full border-t border-white/10 bg-slate-950 py-6 px-4 text-center text-xs text-slate-400">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span>⚽</span>
-            <span className="font-bold text-slate-300">Orla Bet Pro</span>
+            <Brain className="w-4 h-4 text-cyan-400" />
+            <span className="font-bold text-slate-300">ZAP BET IA</span>
             <span>•</span>
-            <span className="text-[11px]">Plataforma de Alta Assertividade com IA</span>
+            <span className="text-[11px]">Central de Inteligência Artificial Esportiva</span>
           </div>
 
           <div className="flex items-center gap-4 text-[11px] font-bold text-slate-400">

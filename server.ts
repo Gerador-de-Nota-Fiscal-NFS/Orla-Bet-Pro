@@ -4,39 +4,14 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
 // -------------------------------------------------------------
-// Tipos
-// -------------------------------------------------------------
-
-type CacheEntry<T> = { timestamp: number; data: T };
-
-type NormalizedMatch = {
-  fixture: { id: number; date: string; timestamp: number | null; timezone: string; status: { long: string; short: string; elapsed: number | null } };
-  league: { id?: number; name: string };
-  teams: { home: { id?: number; name: string; logo?: string }; away: { id?: number; name: string; logo?: string } };
-  goals: { home: number | null; away: number | null };
-  source: string;
-  lastUpdatedAt: string;
-};
-
-// -------------------------------------------------------------
 // Configurações
 // -------------------------------------------------------------
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const FOOTBALL_CACHE_TTL_MS = 5 * 60 * 1000;
-const LIVE_CACHE_TTL_MS = 30 * 1000;
-const REQUEST_TIMEOUT_MS = 15 * 1000;
+const GEMINI_MODEL =
+  process.env.GEMINI_MODEL?.trim() ||
+  'gemini-2.5-flash';
 
-const API_FOOTBALL_FIXTURES_URL = 'https://v3.football.api-sports.io/fixtures';
-const API_FOOTBALL_LIVE_URL = 'https://v3.football.api-sports.io/fixtures?live=all';
-
-// -------------------------------------------------------------
-// Cache em memória
-// -------------------------------------------------------------
-
-const fixturesCache: Record<string, CacheEntry<NormalizedMatch[]>> = {};
-let liveCache: CacheEntry<NormalizedMatch[]> | null = null;
-const h2hCache: Record<string, CacheEntry<NormalizedMatch[]>> = {};
 
 // -------------------------------------------------------------
 // Cliente Gemini (Inicialização Lazy)
@@ -76,45 +51,9 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function getQueryString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const result = value.trim();
-  return result || undefined;
-}
-
 function sanitizeText(value: unknown, maxLength: number): string {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, maxLength);
-}
-
-function getBrazilDate(): string {
-  try {
-    const now = new Date();
-    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
-    const brazilTime = new Date(utcTime - 3 * 3600000);
-    return `${brazilTime.getUTCFullYear()}-${String(brazilTime.getUTCMonth() + 1).padStart(2, '0')}-${String(brazilTime.getUTCDate()).padStart(2, '0')}`;
-  } catch {
-    return new Date().toISOString().split('T')[0];
-  }
-}
-
-function normalizeMatch(item: any): NormalizedMatch | null {
-  if (!item || !item.fixture || !item.teams) return null;
-  return {
-    fixture: {
-      id: item.fixture.id, date: item.fixture.date, timestamp: item.fixture.timestamp || null,
-      timezone: item.fixture.timezone || 'UTC',
-      status: { long: item.fixture.status?.long || 'Not Started', short: item.fixture.status?.short || 'NS', elapsed: item.fixture.status?.elapsed || null }
-    },
-    league: { id: item.league?.id, name: item.league?.name || 'Desconhecida' },
-    teams: {
-      home: { id: item.teams.home?.id, name: item.teams.home?.name || 'Mandante', logo: item.teams.home?.logo },
-      away: { id: item.teams.away?.id, name: item.teams.away?.name || 'Visitante', logo: item.teams.away?.logo }
-    },
-    goals: { home: item.goals?.home ?? null, away: item.goals?.away ?? null },
-    source: 'api-football',
-    lastUpdatedAt: new Date().toISOString()
-  };
 }
 
 // -------------------------------------------------------------
@@ -129,7 +68,7 @@ async function startServer() {
   app.use((req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-apisports-key');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     if (req.method === 'OPTIONS') return res.sendStatus(200);
     next();
   });
@@ -143,52 +82,7 @@ async function startServer() {
       timestamp: new Date().toISOString(),
       port: PORT,
       geminiConfigured: Boolean(key && key.length >= 20),
-      keyPrefix: key ? key.substring(0, 3) : 'none'
     });
-  });
-
-  // -----------------------------------------------------------
-  // 🌟 ENDPOINT: Gerador de Bilhetes com IA + Google Search
-  // -----------------------------------------------------------
-  app.post('/api/ai/ticket', async (req: Request, res: Response) => {
-    try {
-      const { matches } = req.body;
-      if (!matches || !Array.isArray(matches) || matches.length === 0) return res.status(400).json({ error: 'Nenhum jogo fornecido.' });
-
-      const ai = getGenAI();
-      if (!ai) return res.status(503).json({ error: 'IA não configurada. Verifique a GEMINI_API_KEY.' });
-
-      const gamesContext = matches.map((m: NormalizedMatch, i: number) => `${i + 1}. ${m.teams.home.name} vs ${m.teams.away.name} | Liga: ${m.league.name}`).join('\n');
-      const prompt = `Analise estes jogos com Google Search e retorne JSON estrito (sem markdown):
-{ "ticketTitle": "Bilhete Inteligente", "totalOdd": 0.00, "confidenceLevel": "Alto/Médio/Baixo", "selections": [{ "game": "A vs B", "market": "Mercado", "selection": "Seleção", "odd": 0.00, "confidence": "Alto/Médio/Baixo", "justification": "Motivo", "source": "Fonte" }], "responsibleGamingWarning": "Aviso de jogo responsável" }
-JOGOS: ${gamesContext}`;
-
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash', // ✅ MODELO MAIS RECENTE E ESTÁVEL (2025)
-          contents: prompt,
-          config: { temperature: 0.3, tools: [{ googleSearch: {} }] }
-        });
-      } catch (modelError: any) {
-        console.warn('⚠️ gemini-2.0-flash falhou, tentando gemini-2.5-flash...');
-        response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash', // ✅ FALLBACK PARA VERSÃO BETA
-          contents: prompt,
-          config: { temperature: 0.3, tools: [{ googleSearch: {} }] }
-        });
-      }
-
-      const reply = response.text || '';
-      try {
-        const cleanJson = reply.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        res.json({ success: true, ticket: JSON.parse(cleanJson), rawResponse: reply });
-      } catch {
-        res.json({ success: true, ticket: null, rawResponse: reply, parseError: 'Erro ao parsear JSON' });
-      }
-    } catch (error) {
-      res.status(500).json({ error: 'Erro ao gerar bilhete.', details: getErrorMessage(error) });
-    }
   });
 
   // -----------------------------------------------------------
@@ -200,7 +94,7 @@ JOGOS: ${gamesContext}`;
       if (!message || typeof message !== 'string') return res.status(400).json({ error: 'Mensagem inválida.' });
 
       const ai = getGenAI();
-      if (!ai) return res.json({ reply: '🤖 **ZAP BET IA**\n\nErro: Chave da IA inválida ou não configurada.' });
+      if (!ai) return res.status(503).json({ error: 'IA não configurada.' });
 
       const systemPrompt = `Você é a ZAP BET IA, especialista em futebol com Google Search em tempo real.
 NUNCA invente dados. Use APENAS informações reais encontradas via busca.
@@ -209,26 +103,20 @@ Contexto: ${gamesSummary || 'Nenhum'}
 Jogo: ${selectedMatch ? JSON.stringify(selectedMatch) : 'Nenhum'}
 Histórico: ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.text}`).join('\n') : ''}`;
 
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash', // ✅ MODELO MAIS RECENTE E ESTÁVEL (2025)
-          contents: sanitizeText(message, 2000),
-          config: { systemInstruction: systemPrompt, temperature: 0.7, tools: [{ googleSearch: {} }] }
-        });
-      } catch (modelError: any) {
-        console.warn('⚠️ gemini-2.0-flash falhou, tentando gemini-2.5-flash...');
-        response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash', // ✅ FALLBACK PARA VERSÃO BETA
-          contents: sanitizeText(message, 2000),
-          config: { systemInstruction: systemPrompt, temperature: 0.7, tools: [{ googleSearch: {} }] }
-        });
-      }
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: sanitizeText(message, 2000),
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.7,
+          tools: [{ googleSearch: {} }]
+        }
+      });
 
       res.json({ reply: response.text || 'Não consegui processar a análise.' });
     } catch (error) {
       console.error('Erro no processamento Gemini IA:', error);
-      res.status(500).json({ error: 'Erro ao gerar resposta.', details: getErrorMessage(error) });
+      res.status(502).json({ error: 'Não foi possível gerar a resposta da IA neste momento.' });
     }
   });
 
@@ -262,21 +150,15 @@ CONTEXTO: ${context || 'Nenhum'}`;
 
       console.log('[AI Analyze] Processando:', command);
 
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash', // ✅ MODELO MAIS RECENTE E ESTÁVEL (2025)
-          contents: command,
-          config: { systemInstruction: systemPrompt, temperature: 0.2, tools: [{ googleSearch: {} }] }
-        });
-      } catch (modelError: any) {
-        console.warn('⚠️ gemini-2.0-flash falhou, tentando gemini-2.5-flash...');
-        response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash', // ✅ FALLBACK PARA VERSÃO BETA
-          contents: command,
-          config: { systemInstruction: systemPrompt, temperature: 0.2, tools: [{ googleSearch: {} }] }
-        });
-      }
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: command,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.2,
+          tools: [{ googleSearch: {} }]
+        }
+      });
 
       const reply = response.text || '';
       
@@ -306,7 +188,7 @@ CONTEXTO: ${context || 'Nenhum'}`;
       }
     } catch (error) {
       console.error('[AI Analyze] Erro crítico:', error);
-      res.status(500).json({ success: false, error: 'Erro interno', details: getErrorMessage(error) });
+      res.status(502).json({ success: false, error: 'Não foi possível gerar a análise neste momento.' });
     }
   });
 
@@ -336,7 +218,7 @@ CONTEXTO: ${context || 'Nenhum'}`;
   app.listen(PORT, '0.0.0.0', () => {
     const key = process.env.GEMINI_API_KEY?.trim();
     console.log(`⚡ ZAP BET IA Server running on http://0.0.0.0:${PORT}`);
-    console.log(`🤖 GEMINI_API_KEY configurada: ${Boolean(key && key.length >= 20)} (Prefixo: ${key ? key.substring(0, 3) : 'none'})`);
+    console.log(`🤖 GEMINI_API_KEY configurada: ${Boolean(key && key.length >= 20)}`);
   });
 }
 

@@ -33,16 +33,19 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
   onShowToast
 }) => {
   const [aiMode, setAiMode] = useState<'tipster' | 'general'>('tipster');
+  
+  // ✅ MENSAGEM DE BOAS-VINDAS MELHORADA (funciona bem mesmo com 0 jogos)
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome-1',
       sender: 'bot',
       text: `🦁 **Olá! Eu sou a Orla IA Universal**, seu motor analítico esportivo de alta precisão.\n\n` +
-        `Estou conectada aos dados em tempo real dos **${games.length} jogos** carregados hoje.\n\n` +
+        `Estou pronta para analisar os **${games.length > 0 ? games.length + ' jogos' : 'principais campeonatos'}** do dia.\n\n` +
         `Você pode alternar entre os modos **🎯 Tipster (+EV)** ou **🧠 Analista Tático Geral** no topo da tela para obter análises sob medida!`,
       timestamp: new Date().toISOString()
     }
   ]);
+  
   const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -58,7 +61,6 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
     }
   }, [messages, isOpen]);
 
-  // When selectedMatch changes externally, auto-prompt if desired
   useEffect(() => {
     if (selectedMatch && isOpen) {
       const prompt = `Faça uma análise estatística aprofundada do confronto entre ${selectedMatch.teams.home.name} e ${selectedMatch.teams.away.name}.`;
@@ -136,7 +138,7 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
               <h3 className="font-black text-sm uppercase tracking-wider">
                 Orla IA Universal
               </h3>
-              <span className="bg-emerald-400 text-emerald-950 text-[8px] font-black px-1.5 py-0.2 rounded-full uppercase">
+              <span className="bg-emerald-400 text-emerald-950 text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">
                 Online
               </span>
             </div>
@@ -179,6 +181,15 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
             🧠 Tático Geral
           </button>
         </div>
+      </div>
+
+      {/* ✅ NOVO: Aviso Profissional de Limitação da API + Poder da IA */}
+      <div className="bg-amber-50 px-3.5 py-2 border-b border-amber-200 flex items-start gap-2 text-[11px] text-amber-900">
+        <span className="text-base shrink-0 mt-0.5">💡</span>
+        <p className="leading-tight">
+          <strong>Nota:</strong> Devido às limitações do plano gratuito da API de dados, alguns jogos podem não aparecer no sistema. 
+          Porém, a <strong>Orla IA continua 100% ativa</strong> e usa o <strong>Google Search em tempo real</strong> para analisar qualquer time, notícia ou mercado que você perguntar!
+        </p>
       </div>
 
       {/* Match Context Pill if match is loaded */}
@@ -257,7 +268,7 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
               <div className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce [animation-delay:0.2s]" />
               <div className="w-2 h-2 rounded-full bg-cyan-500 animate-bounce [animation-delay:0.4s]" />
               <span className="text-[11px] font-bold text-slate-500 ml-1">
-                Processando análise estatística...
+                Pesquisando e processando análise...
               </span>
             </div>
           </div>
@@ -304,7 +315,7 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            placeholder="Pergunte sobre qualquer jogo ou mercado..."
+            placeholder="Pergunte sobre qualquer time, jogo ou mercado..."
             className="flex-1 bg-slate-100 border border-slate-200 rounded-2xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-purple-500 shadow-inner font-medium"
           />
           <button

@@ -52,7 +52,7 @@ type NormalizedMatch = {
 // Configurações
 // -------------------------------------------------------------
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const FOOTBALL_TIMEZONE = 'America/Sao_Paulo';
 const FOOTBALL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min cache
 const LIVE_CACHE_TTL_MS = 30 * 1000; // 30s cache para jogos ao vivo
@@ -213,7 +213,7 @@ async function startServer() {
     const hasGemini = Boolean(process.env.GEMINI_API_KEY?.trim());
     res.json({
       status: 'ok',
-      service: 'Orla Bet Pro Analytics Backend',
+      service: 'ZAP BET IA Backend',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       port: PORT,
@@ -466,7 +466,7 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-1.5-flash-latest', // ✅ Corrigido para modelo estável
         contents: prompt,
         config: {
           temperature: 0.3,
@@ -506,11 +506,11 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
 
       if (!ai) {
         return res.json({
-          reply: `🤖 **Orla IA (Modo Limitado)**\n\nA chave da IA não está configurada no servidor. Por favor, contate o administrador.`
+          reply: `🤖 **ZAP BET IA (Modo Limitado)**\n\nA chave da IA não está configurada no servidor. Por favor, contate o administrador.`
         });
       }
 
-      const systemPrompt = `Você é o "Orla IA", analista e cientista de dados esportivo oficial da plataforma Orla Bet Pro Analytics.
+      const systemPrompt = `Você é a ZAP BET IA, analista e cientista de dados esportivo oficial.
 Especialista em futebol nacional e internacional.
 Seu tom é profissional, analítico, seguro, ético e sempre focado em gestão de risco consciente e estatística de valor esperado (+EV).
 
@@ -536,7 +536,7 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
 `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-1.5-flash-latest', // ✅ Corrigido para modelo estável
         contents: sanitizeText(message, 2000),
         config: {
           systemInstruction: systemPrompt,
@@ -550,6 +550,123 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
     } catch (error) {
       console.error('Erro no processamento Gemini IA:', error);
       res.status(500).json({ error: 'Erro ao gerar resposta com a IA.', details: getErrorMessage(error) });
+    }
+  });
+
+  // -----------------------------------------------------------
+  // 🌟 NOVO ENDPOINT: Análise Estruturada de Futebol
+  // -----------------------------------------------------------
+  app.post('/api/ai/analyze', async (req: Request, res: Response) => {
+    try {
+      const { command, context } = req.body;
+
+      if (!command || typeof command !== 'string') {
+        return res.status(400).json({ error: 'Comando inválido ou não fornecido.' });
+      }
+
+      const ai = getGenAI();
+      if (!ai) {
+        return res.status(503).json({ error: 'IA não configurada.' });
+      }
+
+      const systemPrompt = `Você é a ZAP BET IA, especialista em análise de futebol com acesso ao Google Search em tempo real.
+
+TAREFA: Analisar comandos de futebol e retornar dados ESTRUTURADOS em JSON.
+
+REGRAS CRÍTICAS:
+1. NUNCA invente dados. Use APENAS informações reais encontradas via Google Search.
+2. Se não encontrar dados suficientes, retorne campos null e explique no campo "erro".
+3. Sempre cite as fontes consultadas.
+4. Inclua o timestamp da consulta.
+5. Não prometa resultados ou garanta apostas.
+6. Separe fatos de estimativas claramente.
+
+FORMATO DE RESPOSTA (JSON estrito, sem markdown):
+{
+  "tipo": "analise_pre_jogo" | "analise_ao_vivo" | "comparacao" | "odds" | "noticias" | "erro",
+  "titulo": "Nome da análise",
+  "resumo": "Resumo executivo em 2-3 frases",
+  "partida": {
+    "competicao": "Nome da competição",
+    "data": "YYYY-MM-DD",
+    "horario": "HH:MM",
+    "estadio": "Nome do estádio",
+    "status": "agendado" | "ao_vivo" | "encerrado"
+  },
+  "forma_recente": {
+    "time_casa": { "nome": "...", "ultimos_5": "V-E-D-V-E", "pontos": 0 },
+    "time_visitante": { "nome": "...", "ultimos_5": "...", "pontos": 0 }
+  },
+  "desfalques": [
+    { "jogador": "Nome", "time": "Time", "motivo": "Lesão/Suspensão", "impacto": "alto" | "medio" | "baixo" }
+  ],
+  "analise_tatica": "Análise tática detalhada em texto",
+  "estatisticas": [
+    { "categoria": "Posse de bola", "time_casa": "55%", "time_visitante": "45%" }
+  ],
+  "mercados": [
+    {
+      "nome": "Nome do mercado",
+      "odd": 1.85,
+      "probabilidade_estimada": 54,
+      "confianca": "alta" | "moderada" | "baixa",
+      "argumentos": ["Argumento 1", "Argumento 2"],
+      "riscos": ["Risco 1"]
+    }
+  ],
+  "conclusao": "Conclusão final responsável",
+  "fontes": [
+    { "nome": "Nome da fonte", "url": "https://..." }
+  ],
+  "consultado_em": "2026-09-01T12:00:00Z",
+  "erro": null
+}
+
+COMANDO DO USUÁRIO: ${command}
+CONTEXTO ADICIONAL: ${context || 'Nenhum'}
+
+Retorne APENAS o JSON, sem markdown ou texto adicional.`;
+
+      console.log('[AI Analyze] Processando comando:', command);
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-1.5-flash-latest',
+        contents: command,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.3,
+          tools: [{ googleSearch: {} }]
+        }
+      });
+
+      const reply = response.text || '';
+      console.log('[AI Analyze] Resposta recebida, length:', reply.length);
+
+      try {
+        const cleanJson = reply.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        const analysisData = JSON.parse(cleanJson);
+        
+        if (!analysisData.tipo) {
+          analysisData.tipo = 'erro';
+          analysisData.erro = 'Resposta da IA não contém campo "tipo"';
+        }
+
+        res.json({ success: true, data: analysisData });
+      } catch (parseError) {
+        console.error('[AI Analyze] Erro ao parsear JSON:', parseError);
+        res.json({ 
+          success: false, 
+          error: 'Erro ao processar resposta da IA',
+          rawResponse: reply 
+        });
+      }
+
+    } catch (error) {
+      console.error('[AI Analyze] Erro crítico:', error);
+      res.status(500).json({ 
+        error: 'Erro ao gerar análise', 
+        details: getErrorMessage(error) 
+      });
     }
   });
 
@@ -584,7 +701,7 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
   // Iniciar servidor
   // -----------------------------------------------------------
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`⚡ Orla Bet Server running on http://0.0.0.0:${PORT}`);
+    console.log(`⚡ ZAP BET IA Server running on http://0.0.0.0:${PORT}`);
     console.log(`📅 Data atual no Brasil: ${getBrazilDate()}`);
     console.log(`🔑 API_FOOTBALL_KEY configurado: ${Boolean(process.env.API_FOOTBALL_KEY?.trim())}`);
     console.log(`🤖 GEMINI_API_KEY configurada: ${Boolean(process.env.GEMINI_API_KEY?.trim())}`);

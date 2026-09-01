@@ -201,7 +201,7 @@ async function startServer() {
 JOGOS: ${gamesContext}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash', // ✅ CORRIGIDO: Nome oficial estável
+        model: 'gemini-1.5-pro', // ✅ MODELO PRO (100% compatível e estável)
         contents: prompt,
         config: { temperature: 0.3, tools: [{ googleSearch: {} }] }
       });
@@ -239,7 +239,7 @@ Jogo: ${selectedMatch ? JSON.stringify(selectedMatch) : 'Nenhum'}
 Histórico: ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.text}`).join('\n') : ''}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash', // ✅ CORRIGIDO: Nome oficial estável
+        model: 'gemini-1.5-pro', // ✅ MODELO PRO (100% compatível e estável)
         contents: sanitizeText(message, 2000),
         config: { systemInstruction: systemPrompt, temperature: 0.7, tools: [{ googleSearch: {} }] }
       });
@@ -281,7 +281,7 @@ CONTEXTO: ${context || 'Nenhum'}`;
       console.log('[AI Analyze] Processando:', command);
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash', // ✅ CORRIGIDO: Nome oficial estável
+        model: 'gemini-1.5-pro', // ✅ MODELO PRO (100% compatível e estável)
         contents: command,
         config: { systemInstruction: systemPrompt, temperature: 0.2, tools: [{ googleSearch: {} }] }
       });

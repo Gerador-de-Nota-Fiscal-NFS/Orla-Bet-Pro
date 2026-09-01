@@ -466,7 +466,7 @@ FORMATO DE RESPOSTA (JSON estrito, sem markdown):
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash-latest', // ✅ Corrigido para modelo estável
+        model: 'gemini-1.5-flash-latest',
         contents: prompt,
         config: {
           temperature: 0.3,
@@ -536,12 +536,12 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
 `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash-latest', // ✅ Corrigido para modelo estável
+        model: 'gemini-1.5-flash-latest',
         contents: sanitizeText(message, 2000),
         config: {
           systemInstruction: systemPrompt,
           temperature: 0.7,
-          tools: [{ googleSearch: {} }] // ✅ ATIVA A PESQUISA NA INTERNET!
+          tools: [{ googleSearch: {} }]
         }
       });
 
@@ -554,7 +554,7 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
   });
 
   // -----------------------------------------------------------
-  // 🌟 NOVO ENDPOINT: Análise Estruturada de Futebol
+  // 🌟 NOVO ENDPOINT: Análise Estruturada de Futebol (COM PARSER ROBUSTO)
   // -----------------------------------------------------------
   app.post('/api/ai/analyze', async (req: Request, res: Response) => {
     try {
@@ -570,62 +570,24 @@ ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.tex
       }
 
       const systemPrompt = `Você é a ZAP BET IA, especialista em análise de futebol com acesso ao Google Search em tempo real.
+Retorne APENAS um objeto JSON válido, sem markdown, sem texto antes ou depois.
 
-TAREFA: Analisar comandos de futebol e retornar dados ESTRUTURADOS em JSON.
-
-REGRAS CRÍTICAS:
-1. NUNCA invente dados. Use APENAS informações reais encontradas via Google Search.
-2. Se não encontrar dados suficientes, retorne campos null e explique no campo "erro".
-3. Sempre cite as fontes consultadas.
-4. Inclua o timestamp da consulta.
-5. Não prometa resultados ou garanta apostas.
-6. Separe fatos de estimativas claramente.
-
-FORMATO DE RESPOSTA (JSON estrito, sem markdown):
+FORMATO DE RESPOSTA (JSON estrito):
 {
   "tipo": "analise_pre_jogo" | "analise_ao_vivo" | "comparacao" | "odds" | "noticias" | "erro",
   "titulo": "Nome da análise",
   "resumo": "Resumo executivo em 2-3 frases",
-  "partida": {
-    "competicao": "Nome da competição",
-    "data": "YYYY-MM-DD",
-    "horario": "HH:MM",
-    "estadio": "Nome do estádio",
-    "status": "agendado" | "ao_vivo" | "encerrado"
-  },
-  "forma_recente": {
-    "time_casa": { "nome": "...", "ultimos_5": "V-E-D-V-E", "pontos": 0 },
-    "time_visitante": { "nome": "...", "ultimos_5": "...", "pontos": 0 }
-  },
-  "desfalques": [
-    { "jogador": "Nome", "time": "Time", "motivo": "Lesão/Suspensão", "impacto": "alto" | "medio" | "baixo" }
-  ],
-  "analise_tatica": "Análise tática detalhada em texto",
-  "estatisticas": [
-    { "categoria": "Posse de bola", "time_casa": "55%", "time_visitante": "45%" }
-  ],
-  "mercados": [
-    {
-      "nome": "Nome do mercado",
-      "odd": 1.85,
-      "probabilidade_estimada": 54,
-      "confianca": "alta" | "moderada" | "baixa",
-      "argumentos": ["Argumento 1", "Argumento 2"],
-      "riscos": ["Risco 1"]
-    }
-  ],
-  "conclusao": "Conclusão final responsável",
-  "fontes": [
-    { "nome": "Nome da fonte", "url": "https://..." }
-  ],
-  "consultado_em": "2026-09-01T12:00:00Z",
-  "erro": null
+  "partida": { "competicao": "...", "data": "YYYY-MM-DD", "horario": "HH:MM", "estadio": "...", "status": "agendado" | "ao_vivo" | "encerrado" },
+  "desfalques": [ { "jogador": "...", "time": "...", "motivo": "...", "impacto": "alto" | "medio" | "baixo" } ],
+  "analise_tatica": "Texto...",
+  "mercados": [ { "nome": "...", "odd": 1.85, "probabilidade_estimada": 54, "confianca": "alta" | "moderada" | "baixa", "argumentos": ["..."], "riscos": ["..."] } ],
+  "conclusao": "Texto...",
+  "fontes": [ { "nome": "...", "url": "..." } ],
+  "consultado_em": "2026-09-01T12:00:00Z"
 }
 
-COMANDO DO USUÁRIO: ${command}
-CONTEXTO ADICIONAL: ${context || 'Nenhum'}
-
-Retorne APENAS o JSON, sem markdown ou texto adicional.`;
+COMANDO: ${command}
+CONTEXTO: ${context || 'Nenhum'}`;
 
       console.log('[AI Analyze] Processando comando:', command);
 
@@ -634,37 +596,54 @@ Retorne APENAS o JSON, sem markdown ou texto adicional.`;
         contents: command,
         config: {
           systemInstruction: systemPrompt,
-          temperature: 0.3,
+          temperature: 0.2, // Temperatura mais baixa para forçar JSON puro
           tools: [{ googleSearch: {} }]
         }
       });
 
       const reply = response.text || '';
-      console.log('[AI Analyze] Resposta recebida, length:', reply.length);
+      console.log('[AI Analyze] Resposta bruta recebida (primeiros 200 chars):', reply.substring(0, 200));
+
+      // 🛡️ PARSER DE JSON ROBUSTO (À prova de falhas)
+      let cleanJson = reply;
+      
+      // 1. Tenta remover blocos de código markdown ```json ... ```
+      const jsonMatch = reply.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        cleanJson = jsonMatch[1];
+      } else {
+        // 2. Fallback: Tenta pegar tudo entre o primeiro '{' e o último '}'
+        const firstBrace = reply.indexOf('{');
+        const lastBrace = reply.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          cleanJson = reply.substring(firstBrace, lastBrace + 1);
+        }
+      }
 
       try {
-        const cleanJson = reply.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
         const analysisData = JSON.parse(cleanJson);
         
         if (!analysisData.tipo) {
           analysisData.tipo = 'erro';
-          analysisData.erro = 'Resposta da IA não contém campo "tipo"';
+          analysisData.erro = 'Resposta da IA não contém o campo "tipo"';
         }
 
         res.json({ success: true, data: analysisData });
       } catch (parseError) {
-        console.error('[AI Analyze] Erro ao parsear JSON:', parseError);
-        res.json({ 
+        console.error('[AI Analyze] Falha ao fazer parse do JSON. Resposta limpa:', cleanJson);
+        console.error('[AI Analyze] Erro de parse:', parseError);
+        res.status(500).json({ 
           success: false, 
-          error: 'Erro ao processar resposta da IA',
-          rawResponse: reply 
+          error: 'A IA retornou um formato inválido.',
+          rawResponse: reply.substring(0, 500) // Retorna um pedaço para debug
         });
       }
 
     } catch (error) {
-      console.error('[AI Analyze] Erro crítico:', error);
+      console.error('[AI Analyze] Erro crítico no endpoint:', error);
       res.status(500).json({ 
-        error: 'Erro ao gerar análise', 
+        success: false,
+        error: 'Erro interno ao gerar análise', 
         details: getErrorMessage(error) 
       });
     }

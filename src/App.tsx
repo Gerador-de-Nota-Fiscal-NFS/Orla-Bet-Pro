@@ -6,6 +6,7 @@ import { AuthModal } from './components/AuthModal';
 import { VipSubscriptionModal } from './components/VipSubscriptionModal';
 import { AdminSecretLoginModal } from './components/AdminSecretLoginModal';
 import { AdminDashboard } from './components/AdminDashboard';
+import { BankrollManager } from './components/BankrollManager'; // ✅ 1. IMPORT ADICIONADO
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { Subscriber } from './types';
 import { 
@@ -25,6 +26,7 @@ export default function App() {
   const [isPlansOpen, setIsPlansOpen] = useState<boolean>(false);
   const [isSecretAdminOpen, setIsSecretAdminOpen] = useState<boolean>(false);
   const [isChatOpen, setIsChatOpen] = useState<boolean>(true);
+  const [isBankrollOpen, setIsBankrollOpen] = useState<boolean>(false); // ✅ 2. ESTADO ADICIONADO
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -164,11 +166,11 @@ export default function App() {
               </div>
             ) : (
               <div className="flex-1 bg-slate-900/50 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
-                {/* ✅ CORREÇÃO: Prop 'games' removida daqui */}
                 <OrlaAIChat 
                   isOpen={true} 
                   onClose={() => setIsChatOpen(false)} 
-                  onShowToast={showToast} 
+                  onShowToast={showToast}
+                  onOpenBankroll={() => setIsBankrollOpen(true)} // ✅ 3. PROP ADICIONADA AQUI
                 />
               </div>
             )}
@@ -179,6 +181,14 @@ export default function App() {
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} onSuccess={(user) => { setCurrentUser(user); if (user.status === 'teste') setTrialTimeLeft(getRemainingTrialHours(user)); showToast(`Autenticado como ${user.name}`, 'success'); }} onShowToast={showToast} onOpenPlans={() => { setIsAuthOpen(false); setIsPlansOpen(true); }} />
       <VipSubscriptionModal isOpen={isPlansOpen} onClose={() => setIsPlansOpen(false)} onOpenRegister={() => setIsAuthOpen(true)} userName={currentUser?.name} />
       <AdminSecretLoginModal isOpen={isSecretAdminOpen} onClose={() => setIsSecretAdminOpen(false)} onSuccess={(admin) => { setCurrentUser(admin); setCurrentView('admin'); showToast(`Painel Master Admin liberado!`, 'success'); }} onShowToast={showToast} />
+      
+      {/* ✅ 4. COMPONENTE DE GESTÃO DE BANCA ADICIONADO AQUI */}
+      <BankrollManager 
+        isOpen={isBankrollOpen} 
+        onClose={() => setIsBankrollOpen(false)} 
+        onShowToast={showToast} 
+      />
+      
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );

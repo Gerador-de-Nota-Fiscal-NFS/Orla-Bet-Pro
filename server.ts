@@ -7,9 +7,6 @@ import { createServer as createViteServer } from 'vite';
 // -------------------------------------------------------------
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-
-// Modelo recomendado para busca em tempo real: 'perplexity/sonar'
-// Alternativas: 'openai/gpt-4o', 'anthropic/claude-3.5-sonnet'
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'perplexity/sonar';
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
@@ -27,7 +24,6 @@ function sanitizeText(value: unknown, maxLength: number): string {
   return value.trim().slice(0, maxLength);
 }
 
-// Função centralizada para chamar a OpenRouter
 async function callOpenRouter(messages: { role: string; content: string }[], temperature: number): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) {
@@ -46,7 +42,7 @@ async function callOpenRouter(messages: { role: string; content: string }[], tem
       model: OPENROUTER_MODEL,
       messages: messages,
       temperature: temperature,
-      max_tokens: 4000 // ✅ CORREÇÃO: Limita a 4000 tokens para evitar erro 402 de saldo insuficiente
+      max_tokens: 4000
     })
   });
 
@@ -90,7 +86,7 @@ async function startServer() {
   });
 
   // -----------------------------------------------------------
-  // 🌟 Rota de IA Esportiva (Chat)
+  // 🌟 Rota de IA Esportiva (Chat) - PROMPT ATUALIZADO
   // -----------------------------------------------------------
   app.post('/api/ai/chat', async (req: Request, res: Response) => {
     try {
@@ -99,9 +95,38 @@ async function startServer() {
         return res.status(400).json({ error: 'Mensagem inválida.' });
       }
 
-      const systemPrompt = `Você é a ZAP BET IA, especialista em futebol com acesso a dados em tempo real.
-NUNCA invente dados. Use APENAS informações reais.
-Responda em PT-BR, com Markdown limpo, citando fontes reais. Foque em gestão de risco e +EV.
+      const systemPrompt = `Você é a ZAP BET IA, especialista em futebol com acesso a dados em tempo real via Google Search.
+
+REGRAS CRÍTICAS:
+1. NUNCA invente dados, estatísticas ou resultados de jogos.
+2. SEMPRE use Google Search para buscar informações REAIS e ATUALIZADAS.
+3. Responda em PT-BR, com Markdown limpo e organizado.
+4. Foque em gestão de risco e +EV (valor esperado).
+5. NUNCA prometa green certo, lucro garantido ou "aposta sem risco".
+6. Sempre inclua aviso de jogo responsável no final.
+
+QUANDO O USUÁRIO PEDIR ODDS OU BILHETES:
+- Busque odds REAIS em sites públicos de comparação como: OddsChecker, Flashscore, SofaScore, Betano, Bet365.
+- Use Google Search com queries como: "odds Betano Flamengo x Palmeiras hoje", "odds Flashscore jogos de hoje", "comparação de odds Bet365 Betano hoje".
+- Se encontrar odds reais, cite a fonte (ex: "Odd 1.85 conforme Betano via Flashscore").
+- Se NÃO conseguir acessar odds em tempo real, informe o usuário claramente: "Não consegui acessar odds ao vivo neste momento. Recomendo verificar no site da Betano ou Flashscore." e NÃO invente valores.
+- Monte bilhetes com 2 a 5 seleções, informando: jogo, mercado, odd REAL (ou estimada com aviso), confiança (Alta/Média/Baixa).
+- Calcule a odd total do bilhete multiplicando as odds individuais.
+- Dê sua OPINIÃO sobre qual bilhete tem maior probabilidade, mas deixe claro que a decisão final é do cliente.
+- Sugira stake como % da banca (ex: 2-5% para conservador, 1-2% para ousado).
+
+FORMATO DE RESPOSTA PARA BILHETES:
+🎯 **BILHETE [CONSERVADOR/EQUILIBRADO/OUSADO]**
+- Jogo 1: [Time A x Time B] - [Mercado] - Odd [X.XX] ([Fonte])
+- Jogo 2: [Time C x Time D] - [Mercado] - Odd [X.XX] ([Fonte])
+- Odd Total: [X.XX]
+- Confiança: [Alta/Média/Baixa]
+- Stake sugerida: [X% da banca]
+
+💡 **OPINIÃO DA IA:** [Sua análise sobre qual bilhete tem melhor probabilidade]
+
+⚠️ **Aviso:** As odds podem variar. Verifique sempre no site da casa antes de apostar. A decisão final é do cliente.
+
 Contexto: ${gamesSummary || 'Nenhum'}
 Jogo: ${selectedMatch ? JSON.stringify(selectedMatch) : 'Nenhum'}
 Histórico: ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.text}`).join('\n') : ''}`;
@@ -157,7 +182,6 @@ CONTEXTO: ${context || 'Nenhum'}`;
       const reply = await callOpenRouter(messages, 0.2);
       console.log('[AI Analyze] Resposta recebida, length:', reply.length);
       
-      // 🛡️ PARSER DE JSON ROBUSTO
       let cleanJson = reply;
       const jsonMatch = reply.match(/```json\s*([\s\S]*?)\s*```/);
       if (jsonMatch) {
@@ -200,17 +224,11 @@ CONTEXTO: ${context || 'Nenhum'}`;
     app.get('*', (_req: Request, res: Response) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
-  // -----------------------------------------------------------
-  // Tratamento de Erros Global
-  // -----------------------------------------------------------
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error('Unhandled server error:', err);
     if (!res.headersSent) res.status(500).json({ error: 'Erro interno.', message: getErrorMessage(err) });
   });
 
-  // -----------------------------------------------------------
-  // Iniciar servidor
-  // -----------------------------------------------------------
   app.listen(PORT, '0.0.0.0', () => {
     const key = process.env.OPENROUTER_API_KEY?.trim();
     console.log(`⚡ ZAP BET IA Server running on http://0.0.0.0:${PORT}`);

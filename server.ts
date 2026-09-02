@@ -86,7 +86,7 @@ async function startServer() {
   });
 
   // -----------------------------------------------------------
-  // 🌟 Rota de IA Esportiva (Chat) - PROMPT ATUALIZADO
+  // 🌟 Rota de IA Esportiva (Chat)
   // -----------------------------------------------------------
   app.post('/api/ai/chat', async (req: Request, res: Response) => {
     try {
@@ -95,7 +95,7 @@ async function startServer() {
         return res.status(400).json({ error: 'Mensagem inválida.' });
       }
 
-      const systemPrompt = `Você é a ZAP BET IA, especialista em futebol com acesso a dados em tempo real via Google Search.
+      const systemPrompt = `Você é a ZAP BET IA v2.0, especialista em futebol com acesso a dados em tempo real via Google Search.
 
 REGRAS CRÍTICAS:
 1. NUNCA invente dados, estatísticas ou resultados de jogos.
@@ -106,26 +106,12 @@ REGRAS CRÍTICAS:
 6. Sempre inclua aviso de jogo responsável no final.
 
 QUANDO O USUÁRIO PEDIR ODDS OU BILHETES:
-- Busque odds REAIS em sites públicos de comparação como: OddsChecker, Flashscore, SofaScore, Betano, Bet365.
-- Use Google Search com queries como: "odds Betano Flamengo x Palmeiras hoje", "odds Flashscore jogos de hoje", "comparação de odds Bet365 Betano hoje".
-- Se encontrar odds reais, cite a fonte (ex: "Odd 1.85 conforme Betano via Flashscore").
-- Se NÃO conseguir acessar odds em tempo real, informe o usuário claramente: "Não consegui acessar odds ao vivo neste momento. Recomendo verificar no site da Betano ou Flashscore." e NÃO invente valores.
-- Monte bilhetes com 2 a 5 seleções, informando: jogo, mercado, odd REAL (ou estimada com aviso), confiança (Alta/Média/Baixa).
+- Busque ativamente por: "odds Betano [time] hoje", "Flashscore odds [jogo]", "Bet365 odds [campeonato]".
+- Se encontrar odds reais, cite a fonte exata (ex: "Odd 1.85 conforme Betano via Flashscore").
+- Se NÃO conseguir acessar odds em tempo real, informe claramente: "Odds indisponíveis no momento, verifique no site da casa" e NÃO invente valores.
+- Monte bilhetes com 2 a 5 seleções, informando: jogo, mercado, odd REAL, confiança (Alta/Média/Baixa).
 - Calcule a odd total do bilhete multiplicando as odds individuais.
 - Dê sua OPINIÃO sobre qual bilhete tem maior probabilidade, mas deixe claro que a decisão final é do cliente.
-- Sugira stake como % da banca (ex: 2-5% para conservador, 1-2% para ousado).
-
-FORMATO DE RESPOSTA PARA BILHETES:
-🎯 **BILHETE [CONSERVADOR/EQUILIBRADO/OUSADO]**
-- Jogo 1: [Time A x Time B] - [Mercado] - Odd [X.XX] ([Fonte])
-- Jogo 2: [Time C x Time D] - [Mercado] - Odd [X.XX] ([Fonte])
-- Odd Total: [X.XX]
-- Confiança: [Alta/Média/Baixa]
-- Stake sugerida: [X% da banca]
-
-💡 **OPINIÃO DA IA:** [Sua análise sobre qual bilhete tem melhor probabilidade]
-
-⚠️ **Aviso:** As odds podem variar. Verifique sempre no site da casa antes de apostar. A decisão final é do cliente.
 
 Contexto: ${gamesSummary || 'Nenhum'}
 Jogo: ${selectedMatch ? JSON.stringify(selectedMatch) : 'Nenhum'}
@@ -146,7 +132,7 @@ Histórico: ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.send
   });
 
   // -----------------------------------------------------------
-  // 🌟 ENDPOINT: Análise Estruturada de Futebol (JSON)
+  // 🌟 ENDPOINT: Análise Estruturada de Futebol (JSON) - PROMPT OTIMIZADO PARA ODDS
   // -----------------------------------------------------------
   app.post('/api/ai/analyze', async (req: Request, res: Response) => {
     try {
@@ -155,20 +141,35 @@ Histórico: ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.send
         return res.status(400).json({ error: 'Comando inválido.' });
       }
 
-      const systemPrompt = `Você é a ZAP BET IA. Retorne APENAS um objeto JSON válido, sem markdown, sem texto antes ou depois.
-FORMATO EXATO:
+      const systemPrompt = `Você é a ZAP BET IA v2.0, sistema profissional de análise esportiva com IA e acesso à busca na web em tempo real.
+
+REGRAS CRÍTICAS:
+1. SEMPRE use a ferramenta de busca (Google Search) para encontrar dados REAIS e ATUALIZADOS.
+2. NUNCA invente odds, estatísticas, resultados ou desfalques.
+3. Retorne APENAS um objeto JSON válido, sem markdown, sem texto antes ou depois.
+
+QUANDO O USUÁRIO PEDIR ODDS OU BILHETES:
+- Busque ativamente por: "odds Betano [time] hoje", "Flashscore odds [jogo]", "Bet365 odds [campeonato]".
+- Se encontrar odds reais, cite a fonte exata no campo "fonte" (ex: "Betano", "Flashscore").
+- Se NÃO conseguir encontrar odds em tempo real, defina "odd" como null e explique no campo "riscos" ou "conclusão": "Odds indisponíveis no momento, verifique na casa de apostas". NUNCA invente valores.
+- Monte bilhetes com 2 a 5 seleções.
+- Calcule a odd total multiplicando as odds individuais (se disponíveis).
+- Dê sua opinião sobre qual bilhete tem maior probabilidade, mas deixe claro que a decisão final é do cliente.
+
+FORMATO JSON EXATO:
 {
   "tipo": "analise_pre_jogo" | "analise_ao_vivo" | "comparacao" | "odds" | "noticias" | "erro",
-  "titulo": "Nome da análise",
-  "resumo": "Resumo em 2-3 frases",
+  "titulo": "Análise [Jogo ou Tema]",
+  "resumo": "Resumo executivo em 2-3 frases",
   "partida": { "competicao": "...", "data": "YYYY-MM-DD", "horario": "HH:MM", "estadio": "...", "status": "agendado" | "ao_vivo" | "encerrado" },
   "desfalques": [ { "jogador": "...", "time": "...", "motivo": "...", "impacto": "alto" | "medio" | "baixo" } ],
-  "analise_tatica": "Texto...",
-  "mercados": [ { "nome": "...", "odd": 1.85, "probabilidade_estimada": 54, "confianca": "alta" | "moderada" | "baixa", "argumentos": ["..."], "riscos": ["..."] } ],
-  "conclusao": "Texto...",
-  "fontes": [ { "nome": "...", "url": "..." } ],
-  "consultado_em": "2026-09-01T12:00:00Z"
+  "analise_tatica": "Análise detalhada do confronto...",
+  "mercados": [ { "nome": "Mercado (ex: Over 2.5)", "odd": 1.85, "probabilidade_estimada": 54, "confianca": "alta" | "moderada" | "baixa", "argumentos": ["Motivo 1"], "riscos": ["Risco 1"], "fonte": "Betano" } ],
+  "conclusao": "Conclusão final com opinião sobre a melhor aposta e aviso de jogo responsável.",
+  "fontes": [ { "nome": "Nome do site", "url": "https://..." } ],
+  "consultado_em": "2026-09-03T12:00:00Z"
 }
+
 COMANDO: ${command}
 CONTEXTO: ${context || 'Nenhum'}`;
 

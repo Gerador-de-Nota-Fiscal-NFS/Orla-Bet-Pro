@@ -1,46 +1,17 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
 
 // -------------------------------------------------------------
 // Configurações
 // -------------------------------------------------------------
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const GEMINI_MODEL =
-  process.env.GEMINI_MODEL?.trim() ||
-  'gemini-2.5-flash';
 
-
-// -------------------------------------------------------------
-// Cliente Gemini (Inicialização Lazy)
-// -------------------------------------------------------------
-
-let aiClient: GoogleGenAI | null = null;
-
-function getGenAI(): GoogleGenAI | null {
-  if (aiClient) return aiClient;
-
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  
-  if (!apiKey || apiKey.length < 20) {
-    console.error('❌ ERRO CRÍTICO: GEMINI_API_KEY não está configurada ou é muito curta.');
-    return null;
-  }
-
-  try {
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-    });
-    console.log('✅ Gemini inicializado com sucesso.');
-    return aiClient;
-  } catch (error) {
-    console.error('Falha ao inicializar o Gemini:', getErrorMessage(error));
-    return null;
-  }
-}
+// Modelo recomendado para busca em tempo real: 'perplexity/sonar'
+// Alternativas: 'openai/gpt-4o', 'anthropic/claude-3.5-sonnet'
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'perplexity/sonar';
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
 // -------------------------------------------------------------
 // Utilitários
@@ -54,6 +25,37 @@ function getErrorMessage(error: unknown): string {
 function sanitizeText(value: unknown, maxLength: number): string {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, maxLength);
+}
+
+// Função centralizada para chamar a OpenRouter
+async function callOpenRouter(messages: { role: string; content: string }[], temperature: number): Promise<string> {
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error('OPENROUTER_API_KEY não está configurada no ambiente.');
+  }
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': APP_URL,
+      'X-Title': 'ZAP BET IA',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: OPENROUTER_MODEL,
+      messages: messages,
+      temperature: temperature
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenRouter API error: ${response.status} - ${errText}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content || '';
 }
 
 // -------------------------------------------------------------
@@ -74,65 +76,61 @@ async function startServer() {
   });
 
   app.get('/api/health', (_req: Request, res: Response) => {
-    const key = process.env.GEMINI_API_KEY?.trim();
+    const key = process.env.OPENROUTER_API_KEY?.trim();
     res.json({
       status: 'ok',
-      service: 'ZAP BET IA Backend',
+      service: 'ZAP BET IA Backend (OpenRouter)',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       port: PORT,
-      geminiConfigured: Boolean(key && key.length >= 20),
+      openRouterConfigured: Boolean(key && key.length >= 10),
+      model: OPENROUTER_MODEL
     });
   });
 
   // -----------------------------------------------------------
-  // 🌟 Rota de IA Esportiva (Chat Gemini)
+  // 🌟 Rota de IA Esportiva (Chat)
   // -----------------------------------------------------------
   app.post('/api/ai/chat', async (req: Request, res: Response) => {
     try {
       const { message, gamesSummary, selectedMatch, chatHistory } = req.body;
-      if (!message || typeof message !== 'string') return res.status(400).json({ error: 'Mensagem inválida.' });
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ error: 'Mensagem inválida.' });
+      }
 
-      const ai = getGenAI();
-      if (!ai) return res.status(503).json({ error: 'IA não configurada.' });
-
-      const systemPrompt = `Você é a ZAP BET IA, especialista em futebol com Google Search em tempo real.
-NUNCA invente dados. Use APENAS informações reais encontradas via busca.
+      const systemPrompt = `Você é a ZAP BET IA, especialista em futebol com acesso a dados em tempo real.
+NUNCA invente dados. Use APENAS informações reais.
 Responda em PT-BR, com Markdown limpo, citando fontes reais. Foque em gestão de risco e +EV.
 Contexto: ${gamesSummary || 'Nenhum'}
 Jogo: ${selectedMatch ? JSON.stringify(selectedMatch) : 'Nenhum'}
 Histórico: ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.sender}: ${c.text}`).join('\n') : ''}`;
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: sanitizeText(message, 2000),
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.7,
-          tools: [{ googleSearch: {} }]
-        }
-      });
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: sanitizeText(message, 2000) }
+      ];
 
-      res.json({ reply: response.text || 'Não consegui processar a análise.' });
+      const reply = await callOpenRouter(messages, 0.7);
+      res.json({ reply: reply || 'Não consegui processar a análise.' });
+      
     } catch (error) {
-      console.error('Erro no processamento Gemini IA:', error);
-      res.status(502).json({ error: 'Não foi possível gerar a resposta da IA neste momento.' });
+      console.error('Erro no processamento OpenRouter IA:', error);
+      res.status(502).json({ error: 'Não foi possível gerar a resposta da IA neste momento.', details: getErrorMessage(error) });
     }
   });
 
   // -----------------------------------------------------------
-  // 🌟 NOVO ENDPOINT: Análise Estruturada de Futebol
+  // 🌟 ENDPOINT: Análise Estruturada de Futebol (JSON)
   // -----------------------------------------------------------
   app.post('/api/ai/analyze', async (req: Request, res: Response) => {
     try {
       const { command, context } = req.body;
-      if (!command || typeof command !== 'string') return res.status(400).json({ error: 'Comando inválido.' });
-
-      const ai = getGenAI();
-      if (!ai) return res.status(503).json({ error: 'IA não configurada.' });
+      if (!command || typeof command !== 'string') {
+        return res.status(400).json({ error: 'Comando inválido.' });
+      }
 
       const systemPrompt = `Você é a ZAP BET IA. Retorne APENAS um objeto JSON válido, sem markdown, sem texto antes ou depois.
-FORMATO:
+FORMATO EXATO:
 {
   "tipo": "analise_pre_jogo" | "analise_ao_vivo" | "comparacao" | "odds" | "noticias" | "erro",
   "titulo": "Nome da análise",
@@ -150,17 +148,13 @@ CONTEXTO: ${context || 'Nenhum'}`;
 
       console.log('[AI Analyze] Processando:', command);
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: command,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.2,
-          tools: [{ googleSearch: {} }]
-        }
-      });
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: command }
+      ];
 
-      const reply = response.text || '';
+      const reply = await callOpenRouter(messages, 0.2);
+      console.log('[AI Analyze] Resposta recebida, length:', reply.length);
       
       // 🛡️ PARSER DE JSON ROBUSTO
       let cleanJson = reply;
@@ -186,9 +180,10 @@ CONTEXTO: ${context || 'Nenhum'}`;
         console.error('[AI Analyze] Erro de parse:', parseError);
         res.status(500).json({ success: false, error: 'Formato inválido', rawResponse: reply.substring(0, 500) });
       }
+      
     } catch (error) {
       console.error('[AI Analyze] Erro crítico:', error);
-      res.status(502).json({ success: false, error: 'Não foi possível gerar a análise neste momento.' });
+      res.status(502).json({ success: false, error: 'Não foi possível gerar a análise neste momento.', details: getErrorMessage(error) });
     }
   });
 
@@ -216,9 +211,9 @@ CONTEXTO: ${context || 'Nenhum'}`;
   // Iniciar servidor
   // -----------------------------------------------------------
   app.listen(PORT, '0.0.0.0', () => {
-    const key = process.env.GEMINI_API_KEY?.trim();
+    const key = process.env.OPENROUTER_API_KEY?.trim();
     console.log(`⚡ ZAP BET IA Server running on http://0.0.0.0:${PORT}`);
-    console.log(`🤖 GEMINI_API_KEY configurada: ${Boolean(key && key.length >= 20)}`);
+    console.log(`🤖 OPENROUTER configurado: ${Boolean(key && key.length >= 10)} (Modelo: ${OPENROUTER_MODEL})`);
   });
 }
 

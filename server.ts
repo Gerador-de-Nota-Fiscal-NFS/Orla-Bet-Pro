@@ -45,7 +45,8 @@ async function callOpenRouter(messages: { role: string; content: string }[], tem
     body: JSON.stringify({
       model: OPENROUTER_MODEL,
       messages: messages,
-      temperature: temperature
+      temperature: temperature,
+      max_tokens: 4000 // ✅ CORREÇÃO: Limita a 4000 tokens para evitar erro 402 de saldo insuficiente
     })
   });
 

@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, User, Copy, Check, Brain } from 'lucide-react';
+import { X, Send, User, Copy, Check, Brain, Sparkles } from 'lucide-react';
 import { ChatMessage } from '../types';
-import { askOrlaAI } from '../services/aiService';
+import { askOrlaAI, analyzeFootball, AnalysisResponse } from '../services/aiService';
+import { StructuredAnalysis } from './StructuredAnalysis';
 
 interface OrlaAIChatProps {
   isOpen: boolean;
@@ -20,13 +21,14 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
       sender: 'bot',
       text: `🧠 **Olá! Eu sou a ZAP BET IA**, sua central de inteligência esportiva.\n\n` +
         `Estou pronta para analisar qualquer time, campeonato ou cenário tático que você perguntar, usando dados reais da internet.\n\n` +
-        `Experimente perguntar: "Analise o próximo jogo do Flamengo" ou "Compare as odds que vou enviar".`,
+        `Experimente perguntar: "Quais os jogos de hoje e a data do dia?" ou "Analise o próximo jogo do Flamengo".`,
       timestamp: new Date().toISOString()
     }
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isDeepAnalysisMode, setIsDeepAnalysisMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -53,19 +55,33 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
     setLoading(true);
 
     try {
-      const replyText = await askOrlaAI({
-        message: query,
-        chatHistory: messages.map(m => ({ sender: m.sender, text: m.text }))
-      });
+      if (isDeepAnalysisMode) {
+        // 🧠 MODO ANÁLISE PROFUNDA (JSON Estruturado com Cartões)
+        const analysisData = await analyzeFootball({ command: query });
+        
+        const botMsg: any = {
+          id: `bot-${Date.now()}`,
+          sender: 'bot',
+          text: analysisData ? '' : '⚠️ Não foi possível gerar a análise estruturada no momento.',
+          timestamp: new Date().toISOString(),
+          analysisData: analysisData
+        };
+        setMessages(prev => [...prev, botMsg]);
+      } else {
+        // 💬 MODO CHAT RÁPIDO (Texto com Markdown)
+        const replyText = await askOrlaAI({
+          message: query,
+          chatHistory: messages.map(m => ({ sender: m.sender, text: m.text }))
+        });
 
-      const botMsg: ChatMessage = {
-        id: `bot-${Date.now()}`,
-        sender: 'bot',
-        text: replyText,
-        timestamp: new Date().toISOString()
-      };
-
-      setMessages(prev => [...prev, botMsg]);
+        const botMsg: ChatMessage = {
+          id: `bot-${Date.now()}`,
+          sender: 'bot',
+          text: replyText,
+          timestamp: new Date().toISOString()
+        };
+        setMessages(prev => [...prev, botMsg]);
+      }
     } catch (err: any) {
       const errorMsg: ChatMessage = {
         id: `bot-err-${Date.now()}`,
@@ -104,11 +120,35 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
         <button onClick={onClose} className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-bold text-xs transition">✕</button>
       </div>
 
+      {/* Toggle Modo Análise Profunda */}
+      <div className="bg-slate-900/80 px-3 py-2 border-b border-slate-800 flex items-center justify-between">
+        <span className="text-[10px] text-slate-400 font-bold uppercase">Modo de Resposta:</span>
+        <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+          <button
+            onClick={() => setIsDeepAnalysisMode(false)}
+            className={`px-2 py-0.5 rounded-md text-[9px] font-black transition ${
+              !isDeepAnalysisMode ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            💬 Chat Rápido
+          </button>
+          <button
+            onClick={() => setIsDeepAnalysisMode(true)}
+            className={`px-2 py-0.5 rounded-md text-[9px] font-black transition flex items-center gap-1 ${
+              isDeepAnalysisMode ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Sparkles className="w-2.5 h-2.5" />
+            Análise Profunda
+          </button>
+        </div>
+      </div>
+
       {/* Info Banner */}
       <div className="bg-cyan-950/30 px-3.5 py-2 border-b border-cyan-800/50 flex items-start gap-2 text-[11px] text-cyan-200">
         <span className="text-base shrink-0 mt-0.5">💡</span>
         <p className="leading-tight">
-          <strong>Nota:</strong> A ZAP BET IA utiliza <strong>Google Search em tempo real</strong> para trazer notícias, estatísticas e análises precisas sobre qualquer time ou campeonato que você perguntar.
+          <strong>Nota:</strong> A ZAP BET IA utiliza <strong>busca em tempo real</strong> para trazer notícias, estatísticas e análises precisas sobre qualquer time ou campeonato.
         </p>
       </div>
 
@@ -121,17 +161,25 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
               <div className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs shrink-0 font-bold ${isBot ? 'bg-gradient-to-tr from-cyan-600 to-purple-600 text-white shadow-sm' : 'bg-slate-700 text-white shadow-sm'}`}>
                 {isBot ? <Brain className="w-4 h-4" /> : <User className="w-4 h-4" />}
               </div>
-              <div className={`relative max-w-[82%] p-3.5 rounded-2xl text-xs leading-relaxed transition-all ${isBot ? 'bg-slate-900 text-slate-100 border border-slate-800 rounded-tl-sm' : 'bg-cyan-700 text-white shadow-md rounded-tr-sm font-medium'}`}>
-                <div className="whitespace-pre-line break-words space-y-1">{m.text}</div>
-                <div className={`flex items-center justify-between gap-2 mt-2 pt-1 border-t ${isBot ? 'border-slate-800 text-slate-500' : 'border-cyan-600 text-cyan-200'} text-[9px]`}>
-                  <span>{new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                  {isBot && (
+              <div className={`relative max-w-[90%] p-3.5 rounded-2xl text-xs leading-relaxed transition-all ${isBot ? 'bg-slate-900 text-slate-100 border border-slate-800 rounded-tl-sm' : 'bg-cyan-700 text-white shadow-md rounded-tr-sm font-medium'}`}>
+                
+                {/* Renderização Condicional: Análise Estruturada vs Texto */}
+                {isBot && (m as any).analysisData ? (
+                  <StructuredAnalysis data={(m as any).analysisData} />
+                ) : (
+                  <div className="whitespace-pre-line break-words space-y-1">{m.text}</div>
+                )}
+
+                {/* Footer / Copy button (apenas para texto normal) */}
+                {isBot && !(m as any).analysisData && (
+                  <div className="flex items-center justify-between gap-2 mt-2 pt-1 border-t border-slate-800 text-[9px] text-slate-500">
+                    <span>{new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                     <button onClick={() => handleCopy(m.id, m.text)} className="hover:text-cyan-400 transition flex items-center gap-1 font-bold">
                       {copiedId === m.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                       <span>{copiedId === m.id ? 'Copiado' : 'Copiar'}</span>
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -154,9 +202,25 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
 
       {/* Suggested Quick Prompt Chips */}
       <div className="px-3 py-2 bg-slate-900 border-t border-slate-800 flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
-        <button onClick={() => handleSendMessage('Analise o próximo jogo do Flamengo')} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-xl text-[10px] font-black whitespace-nowrap transition">🔥 Próximo Jogo</button>
-        <button onClick={() => handleSendMessage('Me dê um bilhete múltiplo de alta taxa de acerto para hoje')} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 rounded-xl text-[10px] font-black whitespace-nowrap transition">🎟️ Bilhete Múltiplo</button>
-        <button onClick={() => handleSendMessage('Como aplicar uma gestão de banca profissional?')} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-[10px] font-black whitespace-nowrap transition">📈 Gestão de Banca</button>
+        {/* ✅ BOTÃO ALTERADO AQUI */}
+        <button 
+          onClick={() => handleSendMessage('Quais os jogos de hoje e a data do dia?')} 
+          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-xl text-[10px] font-black whitespace-nowrap transition"
+        >
+          📅 Jogos de Hoje
+        </button>
+        <button 
+          onClick={() => handleSendMessage('Me dê um bilhete múltiplo de alta taxa de acerto para hoje')} 
+          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 rounded-xl text-[10px] font-black whitespace-nowrap transition"
+        >
+          🎟️ Bilhete Múltiplo
+        </button>
+        <button 
+          onClick={() => handleSendMessage('Como aplicar uma gestão de banca profissional?')} 
+          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-[10px] font-black whitespace-nowrap transition"
+        >
+          📈 Gestão de Banca
+        </button>
       </div>
 
       {/* Message Input Box */}

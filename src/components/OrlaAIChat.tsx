@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, User, Copy, Check, Brain, Sparkles } from 'lucide-react';
+import { X, Send, User, Copy, Check, Brain, Sparkles, Wallet } from 'lucide-react';
 import { ChatMessage } from '../types';
 import { askOrlaAI, analyzeFootball, AnalysisResponse } from '../services/aiService';
 import { StructuredAnalysis } from './StructuredAnalysis';
@@ -8,12 +8,14 @@ interface OrlaAIChatProps {
   isOpen: boolean;
   onClose: () => void;
   onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
+  onOpenBankroll?: () => void; // ✅ NOVA PROP ADICIONADA
 }
 
 export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
   isOpen,
   onClose,
-  onShowToast
+  onShowToast,
+  onOpenBankroll // ✅ DESESTRUTURADO AQUI
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -117,7 +119,20 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
             <p className="text-[10px] text-cyan-200 font-medium">Análise em Tempo Real</p>
           </div>
         </div>
-        <button onClick={onClose} className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-bold text-xs transition">✕</button>
+        
+        {/* ✅ BOTÕES DO HEADER (Carteira + Fechar) */}
+        <div className="flex items-center gap-2">
+          {onOpenBankroll && (
+            <button 
+              onClick={onOpenBankroll} 
+              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/20 transition"
+              title="Gestão de Banca"
+            >
+              <Wallet className="w-5 h-5 text-emerald-300" />
+            </button>
+          )}
+          <button onClick={onClose} className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-bold text-xs transition">✕</button>
+        </div>
       </div>
 
       {/* Toggle Modo Análise Profunda */}
@@ -148,7 +163,7 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
       <div className="bg-cyan-950/30 px-3.5 py-2 border-b border-cyan-800/50 flex items-start gap-2 text-[11px] text-cyan-200">
         <span className="text-base shrink-0 mt-0.5">💡</span>
         <p className="leading-tight">
-          <strong>Nota:</strong> A ZAP BET IA utiliza <strong>busca em tempo real</strong> para trazer notícias, estatísticas e análises precisas sobre qualquer time ou campeonato.
+          <strong>Nota:</strong> A ZAP BET IA utiliza <strong>busca em tempo real</strong> para trazer notícias, estatísticas, odds reais e análises precisas.
         </p>
       </div>
 
@@ -193,33 +208,32 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
               <div className="w-2 h-2 rounded-full bg-cyan-500 animate-bounce" />
               <div className="w-2 h-2 rounded-full bg-purple-500 animate-bounce [animation-delay:0.2s]" />
               <div className="w-2 h-2 rounded-full bg-cyan-500 animate-bounce [animation-delay:0.4s]" />
-              <span className="text-[11px] font-bold text-slate-400 ml-1">Pesquisando e processando...</span>
+              <span className="text-[11px] font-bold text-slate-400 ml-1">Pesquisando odds e processando...</span>
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggested Quick Prompt Chips */}
+      {/* ✅ Suggested Quick Prompt Chips ATUALIZADOS */}
       <div className="px-3 py-2 bg-slate-900 border-t border-slate-800 flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
-        {/* ✅ BOTÃO ALTERADO AQUI */}
+        <button 
+          onClick={() => handleSendMessage('Pesquise 10 jogos de hoje e monte 3 bilhetes: 1 conservador, 1 equilibrado e 1 ousado. Para cada bilhete, inclua as odds reais da Betano ou casas disponíveis, e no final dê sua opinião sobre qual bilhete tem maior probabilidade de green. Deixe claro que a decisão final é do cliente.')} 
+          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-xl text-[10px] font-black whitespace-nowrap transition"
+        >
+          🎯 10 Jogos + 3 Bilhetes
+        </button>
         <button 
           onClick={() => handleSendMessage('Quais os jogos de hoje e a data do dia?')} 
-          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-xl text-[10px] font-black whitespace-nowrap transition"
+          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 rounded-xl text-[10px] font-black whitespace-nowrap transition"
         >
           📅 Jogos de Hoje
         </button>
         <button 
           onClick={() => handleSendMessage('Me dê um bilhete múltiplo de alta taxa de acerto para hoje')} 
-          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 rounded-xl text-[10px] font-black whitespace-nowrap transition"
-        >
-          🎟️ Bilhete Múltiplo
-        </button>
-        <button 
-          onClick={() => handleSendMessage('Como aplicar uma gestão de banca profissional?')} 
           className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-[10px] font-black whitespace-nowrap transition"
         >
-          📈 Gestão de Banca
+          🎟️ Bilhete Múltiplo
         </button>
       </div>
 
@@ -230,7 +244,7 @@ export const OrlaAIChat: React.FC<OrlaAIChatProps> = ({
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            placeholder="Pergunte sobre qualquer time, jogo ou mercado..."
+            placeholder="Pergunte sobre jogos, odds ou gestão de banca..."
             className="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 shadow-inner font-medium placeholder-slate-500"
           />
           <button

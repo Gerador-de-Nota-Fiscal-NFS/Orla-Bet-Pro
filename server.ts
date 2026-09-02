@@ -4,7 +4,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-1.5-flash';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -53,7 +53,7 @@ async function startServer() {
     });
   });
 
-  // 🌟 Rota de Chat com Gemini + Google Search
+  // 🌟 Rota de Chat
   app.post('/api/ai/chat', async (req: Request, res: Response) => {
     try {
       const { message, gamesSummary, selectedMatch, chatHistory } = req.body;
@@ -102,7 +102,7 @@ Histórico: ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.send
     }
   });
 
-  //  Rota de Análise Estruturada (JSON)
+  // 🌟 Rota de Análise Estruturada (JSON) - COM RETRY
   app.post('/api/ai/analyze', async (req: Request, res: Response) => {
     try {
       const { command, context } = req.body;
@@ -113,29 +113,35 @@ Histórico: ${Array.isArray(chatHistory) ? chatHistory.map((c: any) => `${c.send
       const ai = getGenAI();
       if (!ai) return res.status(503).json({ error: 'IA não configurada.' });
 
-      const systemPrompt = `Você é a ZAP BET IA v2.0. Retorne APENAS JSON válido, sem markdown.
+      const systemPrompt = `Você é a ZAP BET IA v2.0. Retorne APENAS um objeto JSON válido.
 
-Use Google Search para buscar odds REAIS (Betano, Flashscore, Bet365).
-Se não encontrar odds, use null e avise no campo "riscos".
+IMPORTANTE:
+- Use Google Search para buscar odds REAIS (Betano, Flashscore, Bet365)
+- Se não encontrar odds, use null no campo "odd" e explique em "riscos"
+- NÃO inclua markdown, NÃO inclua texto antes ou depois do JSON
+- Retorne APENAS o JSON puro
 
-FORMATO JSON:
+FORMATO JSON OBRIGATÓRIO:
 {
   "tipo": "analise_pre_jogo",
   "titulo": "Análise [Jogo]",
   "resumo": "Resumo em 2-3 frases",
   "partida": { "competicao": "...", "data": "YYYY-MM-DD", "horario": "HH:MM", "estadio": "...", "status": "agendado" },
-  "desfalques": [{ "jogador": "...", "time": "...", "motivo": "...", "impacto": "alto|medio|baixo" }],
+  "desfalques": [],
   "analise_tatica": "Texto...",
-  "mercados": [{ "nome": "...", "odd": 1.85, "probabilidade_estimada": 54, "confianca": "alta|moderada|baixa", "argumentos": ["..."], "riscos": ["..."], "fonte": "Betano" }],
-  "conclusao": "Texto com opinião e aviso de jogo responsável",
-  "fontes": [{ "nome": "...", "url": "..." }],
+  "mercados": [{ "nome": "Mercado", "odd": 1.85, "probabilidade_estimada": 54, "confianca": "alta", "argumentos": ["Motivo"], "riscos": ["Risco"], "fonte": "Betano" }],
+  "conclusao": "Conclusão com aviso de jogo responsável",
+  "fontes": [{ "nome": "Site", "url": "https://..." }],
   "consultado_em": "2026-09-03T12:00:00Z"
 }
 
 COMANDO: ${command}
 CONTEXTO: ${context || 'Nenhum'}`;
 
-      const response = await ai.models.generateContent({
+      console.log('[AI Analyze] Processando:', command);
+
+      // Tentativa 1
+      let response = await ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: command,
         config: {
@@ -145,35 +151,69 @@ CONTEXTO: ${context || 'Nenhum'}`;
         }
       });
 
-      const reply = response.text || '';
-      let cleanJson = reply;
-      const jsonMatch = reply.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        cleanJson = jsonMatch[1];
-      } else {
-        const firstBrace = reply.indexOf('{');
-        const lastBrace = reply.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          cleanJson = reply.substring(firstBrace, lastBrace + 1);
-        }
+      let reply = response.text || '';
+      console.log('[AI Analyze] Resposta recebida, length:', reply.length);
+
+      // Tentar extrair JSON
+      let analysisData = extractJSON(reply);
+
+      // Se falhou, tentar novamente com prompt mais simples
+      if (!analysisData) {
+        console.warn('[AI Analyze] JSON inválido, tentando novamente...');
+        const simplePrompt = `Retorne APENAS JSON válido para: ${command}. Formato: {"tipo":"analise_pre_jogo","titulo":"...","resumo":"...","partida":{"competicao":"","data":"","horario":"","estadio":"","status":"agendado"},"desfalques":[],"analise_tatica":"","mercados":[],"conclusao":"","fontes":[],"consultado_em":"2026-09-03T12:00:00Z"}`;
+        
+        response = await ai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: simplePrompt,
+          config: {
+            temperature: 0.1
+          }
+        });
+
+        reply = response.text || '';
+        analysisData = extractJSON(reply);
       }
 
-      try {
-        const analysisData = JSON.parse(cleanJson);
-        if (!analysisData.tipo) {
-          analysisData.tipo = 'erro';
-          analysisData.erro = 'Resposta sem campo "tipo"';
-        }
-        res.json({ success: true, data: analysisData });
-      } catch (parseError) {
-        console.error('Erro de parse:', parseError);
-        res.status(500).json({ success: false, error: 'Formato inválido', rawResponse: reply.substring(0, 500) });
+      // Se ainda falhou, retornar erro estruturado
+      if (!analysisData) {
+        console.error('[AI Analyze] Falhou ao gerar JSON após 2 tentativas');
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Não foi possível gerar análise estruturada',
+          rawResponse: reply.substring(0, 200)
+        });
       }
+
+      res.json({ success: true, data: analysisData });
     } catch (error) {
-      console.error('Erro crítico:', error);
+      console.error('[AI Analyze] Erro crítico:', error);
       res.status(500).json({ success: false, error: 'Erro interno', details: getErrorMessage(error) });
     }
   });
+
+  // Função auxiliar para extrair JSON
+  function extractJSON(text: string): any {
+    let cleanJson = text;
+    
+    // Tentar remover markdown
+    const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      cleanJson = jsonMatch[1];
+    } else {
+      // Tentar encontrar JSON entre chaves
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleanJson = text.substring(firstBrace, lastBrace + 1);
+      }
+    }
+
+    try {
+      return JSON.parse(cleanJson);
+    } catch {
+      return null;
+    }
+  }
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
@@ -191,7 +231,7 @@ CONTEXTO: ${context || 'Nenhum'}`;
 
   app.listen(PORT, '0.0.0.0', () => {
     const key = process.env.GEMINI_API_KEY?.trim();
-    console.log(`⚡ ZAP BET IA running on port ${PORT}`);
+    console.log(` ZAP BET IA running on port ${PORT}`);
     console.log(`🤖 Gemini configurado: ${Boolean(key && key.length >= 20)} (Modelo: ${GEMINI_MODEL})`);
   });
 }
